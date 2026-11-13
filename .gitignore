@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Experiment outputs (large; summaries are recorded in docs/)
+results/
+figures/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
