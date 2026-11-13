@@ -118,8 +118,8 @@ def test_train_run_reproducible_and_seed_dependent():
 def test_run_grid_resumes(tmp_path):
     cfgs = [small_cfg(seed=0), small_cfg(seed=1)]
     git = {"commit": "test", "dirty_paths": []}
-    run_grid(cfgs, tmp_path, "cpu", git, **STAND_INS)
-    run_grid(cfgs, tmp_path, "cpu", git, **STAND_INS)     # second call must skip both
+    run_grid(cfgs, tmp_path, "cpu", git, batched=False, **STAND_INS)
+    run_grid(cfgs, tmp_path, "cpu", git, batched=False, **STAND_INS)     # second call must skip both
     lines = (tmp_path / "summary.jsonl").read_text().splitlines()
     assert len(lines) == 2
     assert {json.loads(l)["seed"] for l in lines} == {0, 1}

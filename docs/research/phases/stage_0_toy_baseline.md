@@ -119,3 +119,22 @@ Environment (S0-5): `.venv` on Python 3.13.7, torch 2.14.1+cu126 (CUDA available
 The user asked Claude to write all the code ("just give me the code"), so Claude also wrote `toy/model.py`, `toy/data.py` and `toy/optim.py`, overriding the S0-7 split (user writes the core). Full suite: 33 passed, 0 skipped. The docstrings in those files explain the mechanics. The user still reviews them before the first real run.
 
 Short sanity runs with the real model (alpha = 1, m = 100, 2,000 steps, seed 0; **not** a gate result): gamma = -1 gave phi_half 1.000, test loss 2.5e-4; gamma = +1 gave phi_half 0.012, test loss 9.4e-4. Real-model speed ≈ 3.4-3.8 s per 1,000 steps, so ≈ 1.2-1.3 min per 20k-step run; both grids ≈ 4.5 h.
+
+## 10. GPU batching (2026-11-14, user request: use the GPU more)
+
+The one-run-at-a-time runner left the GPU mostly idle (about 3.7 ms per step, dominated by kernel-launch overhead). `toy/batched.py` now trains runs of the same width together: W has shape [R, n, m] and each step is a few batched kernels. `toy/sweep.py` uses it by default (`--no-batch` restores one-at-a-time, `--max-group` caps the batch, default 24).
+
+- **Correctness (tested):** `tests/test_batched.py` (CPU) and a GPU check: batched and single runs agree (max weight difference 1e-4 or less, relative test-loss difference below 1e-8 on 6 runs, 2,000 steps, m = 25). 38 tests pass.
+- **Measured speed (21 runs per group, GPU, 300-step benchmark):** batched 24.5 / 34.8 / 40.6 ms per step at m = 10 / 100 / 150, versus about 3.7 ms per step per run before, i.e. roughly 3x faster at m = 10-100 and 2.2x at m = 150. Peak GPU memory 1.3 GB.
+- **Estimate for G-A:** about 72 min (7 groups x 20,000 steps x 24-41 ms), down from about 3 h. G-B (12-run groups) not benchmarked. The estimate is not a measured full run.
+- **Why not faster:** steps are now limited by memory traffic over the [R, 2048, 1000] tensors, not launch overhead. A hand-written fused backward could save roughly another 1.3-1.5x (estimate, not tried). `torch.compile` was not tried (needs Triton, not available by default on Windows).
+- **Trade-off:** results are saved per group, so an interrupted sweep loses only the group in progress. `train_seconds` in saved results is group time divided by the number of runs.
+
+### 10.1 Fused backward (2026-11-14, user chose "optimise more")
+
+`toy/batched.py::fused_loss_and_grads` computes the forward and the gradient by hand (in-place relu and subtraction, no saved temporaries, constant factor applied once to the small gradients). It is the default (`fused=True`); `fused=False` keeps the autograd path as a reference. Loss is only computed on logging steps.
+
+- **Correctness:** `tests/test_batched.py` checks gradients against autograd and training against the autograd path (40 tests pass). GPU check, 6 runs, m = 25, 2,000 steps: max weight difference 1e-4, relative test-loss difference 2e-8, phi_half identical.
+- **Measured (21 runs/group, 300-step benchmark), autograd -> fused:** m = 10: 24.6 -> 17.4 ms/step; m = 100: 37.1 -> 30.2; m = 150: 43.4 -> 36.4. Peak GPU memory 1.3 -> 0.5 GB. (The earlier 34.8 ms at m = 100 was a separate measurement; run-to-run noise is a few ms.)
+- **Updated G-A estimate:** about 7 groups x 20,000 steps x 17-36 ms, i.e. roughly 50-60 min (estimate, not a full run).
+- **What is left:** at m = 100 the three matrix-multiply kernels take about 18 of about 24 GPU-ms per step (profiled), so the step is close to matmul-bound on this card; remaining overhead is data sampling (about 2.4 ms) and a few elementwise passes. Further gains would be roughly 10%, so no more optimisation is planned. fp16 was not considered because it changes the numerics (the card has no tensor cores).

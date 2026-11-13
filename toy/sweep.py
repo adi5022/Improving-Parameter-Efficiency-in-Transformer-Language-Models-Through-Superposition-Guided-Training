@@ -4,6 +4,8 @@
     python -m toy.sweep --grid G-A --dry-run        # list runs, train nothing
     python -m toy.sweep --grid G-A --smoke          # 2 runs x 300 steps into results/smoke/
 
+Runs with the same width are trained together in one batched loop on the GPU
+(toy/batched.py); --no-batch runs them one at a time, --max-group caps the batch.
 Each run is saved to results/stage0/<grid>/<run_id>.pt (full result incl. W) and one
 line of scalars is appended to results/stage0/<grid>/summary.jsonl. Finished runs are
 skipped, so an interrupted sweep can be restarted with the same command.
@@ -25,6 +27,7 @@ from pathlib import Path
 
 import torch
 
+from .batched import group_key, train_group
 from .train import RunConfig, train_run
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -48,25 +51,41 @@ def grid_configs(grid_name: str, config_path: Path = CONFIG) -> list[RunConfig]:
             for a, m, g, s in itertools.product(grid["alpha"], grid["width"], grid["gamma"], grid["seed"])]
 
 
-def run_grid(configs: list[RunConfig], out_dir: Path, device: str, git: dict, **impl) -> None:
+def _save(result: dict, out_dir: Path, git: dict) -> None:
+    result["git"] = git
+    torch.save(result, out_dir / f"{result['run_id']}.pt")
+    line = {"run_id": result["run_id"], "status": result["status"], **result["config"],
+            **{k: result[k] for k in SCALARS}, "git_commit": git["commit"]}
+    with (out_dir / "summary.jsonl").open("a") as f:
+        f.write(json.dumps(line) + "\n")
+
+
+def make_groups(todo: list[RunConfig], max_group: int) -> list[list[RunConfig]]:
+    """Runs that can share one batched training loop (same width and settings), in chunks."""
+    by_key: dict = {}
+    for c in todo:
+        by_key.setdefault(group_key(c), []).append(c)
+    return [runs[i:i + max_group] for runs in by_key.values() for i in range(0, len(runs), max_group)]
+
+
+def run_grid(configs: list[RunConfig], out_dir: Path, device: str, git: dict, *,
+             batched: bool = True, max_group: int = 24, **impl) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
-    summary = out_dir / "summary.jsonl"
     todo = [c for c in configs if not (out_dir / f"{c.run_id()}.pt").exists()]
     print(f"{len(configs)} runs in grid, {len(configs) - len(todo)} already done, {len(todo)} to run -> {out_dir}")
-    t_start = time.perf_counter()
-    for i, cfg in enumerate(todo, 1):
-        result = train_run(cfg, device=device, **impl)
-        result["git"] = git
-        torch.save(result, out_dir / f"{cfg.run_id()}.pt")
-        line = {"run_id": result["run_id"], "status": result["status"], **result["config"],
-                **{k: result[k] for k in SCALARS}, "git_commit": git["commit"]}
-        with summary.open("a") as f:
-            f.write(json.dumps(line) + "\n")
-        elapsed = time.perf_counter() - t_start
-        eta_min = elapsed / i * (len(todo) - i) / 60
-        print(f"[{i}/{len(todo)}] {cfg.run_id()}  test={result['test_loss']:.3e}  "
-              f"phi1/2={result['phi_half']:.3f}  {result['train_seconds']:.0f}s  ETA {eta_min:.0f} min"
-              + ("" if result["status"] == "ok" else f"  STATUS: {result['status']}"), flush=True)
+    groups = make_groups(todo, max_group) if batched else [[c] for c in todo]
+    t_start, done = time.perf_counter(), 0
+    for gi, runs in enumerate(groups, 1):
+        results = train_group(runs, device=device, **impl) if batched else [train_run(runs[0], device=device, **impl)]
+        for res in results:
+            _save(res, out_dir, git)
+        done += len(runs)
+        eta_min = (time.perf_counter() - t_start) / done * (len(todo) - done) / 60
+        c0 = runs[0]
+        bad = [r["run_id"] for r in results if r["status"] != "ok"]
+        print(f"[group {gi}/{len(groups)}] m={c0.width}, {len(runs)} runs, "
+              f"{results[0]['train_seconds'] * len(runs):.0f}s | {done}/{len(todo)} done, ETA {eta_min:.0f} min"
+              + (f" | NON-OK: {bad}" if bad else ""), flush=True)
 
 
 def main(argv=None) -> int:
@@ -76,6 +95,8 @@ def main(argv=None) -> int:
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--smoke", action="store_true", help="2 runs x 300 steps, written to results/smoke/")
     p.add_argument("--allow-dirty", action="store_true", help="run with uncommitted code (results are marked)")
+    p.add_argument("--no-batch", action="store_true", help="one run at a time (slow; for cross-checks)")
+    p.add_argument("--max-group", type=int, default=24, help="max runs trained together on the GPU")
     args = p.parse_args(argv)
 
     configs = grid_configs(args.grid)
@@ -95,7 +116,7 @@ def main(argv=None) -> int:
             print("Refusing to run: commit toy/ and configs/ first (decision S0-6). "
                   f"Uncommitted: {git['dirty_paths'] or 'no commits yet'}", file=sys.stderr)
             return 1
-    run_grid(configs, out_dir, args.device, git)
+    run_grid(configs, out_dir, args.device, git, batched=not args.no_batch, max_group=args.max_group)
     return 0
 
 
