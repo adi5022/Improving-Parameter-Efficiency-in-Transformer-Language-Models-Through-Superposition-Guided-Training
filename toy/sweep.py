@@ -34,6 +34,7 @@ from .train import RunConfig, train_run
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "configs" / "stage0.json"
+WIDTH_COST_OFFSET = 170   # a step costs about 10 ms plus 0.06 ms per unit of width, so cost is not proportional to width
 SCALARS = ["test_loss", "final_train_loss", "phi_half", "phi_one", "mso_all", "mso_represented", "train_seconds"]
 
 
@@ -74,14 +75,14 @@ def split_configs(configs: list[RunConfig], weights: list[float], part: int, max
     """The runs one machine should do when a grid is shared between machines.
 
     Whole batched groups are dealt out, biggest first, to the part furthest below its share
-    (share = weight / sum of weights; a group's cost is runs x width x steps). The result
+    (share = weight / sum of weights; a group's cost is runs x (170 + width) x steps). The result
     depends only on the grid, the weights and max_group, so every machine computes the same
     split, and every run lands on exactly one part.
     """
     if not 0 <= part < len(weights) or any(w <= 0 for w in weights):
         raise ValueError("part must index into weights, and weights must be positive")
     groups = make_groups(configs, max_group)
-    cost = lambda g: len(g) * g[0].width * g[0].steps
+    cost = lambda g: len(g) * (WIDTH_COST_OFFSET + g[0].width) * g[0].steps   # time per step is roughly 10 ms + 0.06 ms per width unit (measured on a T4)
     load = [0.0] * len(weights)
     mine: list[list[RunConfig]] = []
     for g in sorted(groups, key=lambda g: (-cost(g), g[0].run_id())):

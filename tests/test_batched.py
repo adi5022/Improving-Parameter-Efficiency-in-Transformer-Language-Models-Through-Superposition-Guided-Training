@@ -97,8 +97,7 @@ def test_split_covers_every_run_once_and_follows_weights():
     parts = [split_configs(runs, [7, 3], i, max_group=24) for i in (0, 1)]
     ids = [c.run_id() for p in parts for c in p]
     assert sorted(ids) == sorted(c.run_id() for c in runs)          # nothing lost, nothing twice
-    cost = [sum(c.width for c in p) for p in parts]
-    assert cost[0] > cost[1]                                         # the heavier weight gets more work
+    assert len(parts[0]) > len(parts[1])                              # the heavier weight gets more work
     assert split_configs(runs, [7, 3], 0) == parts[0]                # deterministic
 
 
