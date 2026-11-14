@@ -132,3 +132,16 @@ def test_subsplit_divides_a_part_without_changing_the_other_part():
     ids = sorted(c.run_id() for h in halves for c in h)
     assert ids == sorted(c.run_id() for c in second)                 # the second half is covered once
     assert not {c.run_id() for c in first} & set(ids)                # and nothing leaks into the first half
+
+
+def test_grid_with_parts_is_the_union_of_its_rectangles(tmp_path):
+    import json as _json
+    from toy.sweep import grid_configs
+    spec = {"defaults": {"n_features": 10, "steps": 5, "batch_size": 4, "warmup_steps": 1, "test_batches": 1, "log_every": 1},
+            "grids": {"X": {"parts": [{"alpha": [1.0], "width": [3], "gamma": [0.0, 1.0], "seed": [0, 1]},
+                                       {"alpha": [1.0], "width": [4], "gamma": [0.0], "seed": [0, 1]},
+                                       {"alpha": [1.0], "width": [3], "gamma": [0.0], "seed": [0]}]}}}   # last one repeats a run
+    p = tmp_path / "c.json"
+    p.write_text(_json.dumps(spec))
+    runs = grid_configs("X", p)
+    assert len(runs) == 6 and len({c.run_id() for c in runs}) == 6

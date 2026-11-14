@@ -50,8 +50,16 @@ def git_state() -> dict:
 def grid_configs(grid_name: str, config_path: Path = CONFIG) -> list[RunConfig]:
     spec = json.loads(config_path.read_text())
     defaults, grid = spec["defaults"], spec["grids"][grid_name]
-    return [RunConfig(alpha=a, width=m, gamma=g, seed=s, **defaults)
-            for a, m, g, s in itertools.product(grid["alpha"], grid["width"], grid["gamma"], grid["seed"])]
+    # a grid is one rectangle of settings, or several rectangles under "parts" (for runs that are not a full product)
+    rects = grid["parts"] if "parts" in grid else [grid]
+    out, seen = [], set()
+    for rect in rects:
+        for a, m, g, s in itertools.product(rect["alpha"], rect["width"], rect["gamma"], rect["seed"]):
+            c = RunConfig(alpha=a, width=m, gamma=g, seed=s, **defaults)
+            if c.run_id() not in seen:
+                seen.add(c.run_id())
+                out.append(c)
+    return out
 
 
 def _save(result: dict, out_dir: Path, git: dict) -> None:

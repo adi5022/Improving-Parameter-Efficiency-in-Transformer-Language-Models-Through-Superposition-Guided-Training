@@ -38,6 +38,13 @@
       "width": [10, 15, 25, 39, 63, 100, 150],
       "gamma": [-2.0, -1.0, -0.55, -0.3, 0.0],
       "seed": [3, 4, 5, 6, 7, 8, 9]
+    },
+    "G-E": {
+      "purpose": "Step B follow-up (2026-11-15): in G-D the best gamma at m = 63, 100, 150 was -2.0, the edge of the grid. Part 1: gamma -3 and -4 at m = 63, 100, 150, seeds 0-9, to see whether more negative is still better. Part 2: width 225 with gamma -4 to 0, seeds 0-9, so that the 1.5x-width target for m = 150 exists. fp32.",
+      "parts": [
+        {"alpha": [1.0], "width": [63, 100, 150], "gamma": [-3.0, -4.0], "seed": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]},
+        {"alpha": [1.0], "width": [225], "gamma": [-4.0, -3.0, -2.0, -1.0, 0.0], "seed": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]}
+      ]
     }
   },
   "gates_draft": {
