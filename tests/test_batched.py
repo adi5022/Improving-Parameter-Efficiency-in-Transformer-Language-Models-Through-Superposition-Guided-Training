@@ -108,3 +108,17 @@ def test_split_rejects_bad_arguments():
         split_configs([cfg()], [1, 1], 2)
     with pytest.raises(ValueError):
         split_configs([cfg()], [1, 0], 0)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="half-precision products need a GPU")
+def test_half_precision_gradients_close_to_float32():
+    from toy.batched import fused_loss_and_grads
+    torch.manual_seed(0)
+    R, B, n, m = 3, 512, 200, 12
+    x = (torch.rand(R, B, n, device="cuda") < 0.02).float() * torch.rand(R, B, n, device="cuda") * 2
+    W = torch.randn(R, n, m, device="cuda") / m ** 0.5
+    b = torch.randn(R, n, device="cuda")
+    l32, gW32, gb32 = fused_loss_and_grads(x, W, b)
+    l16, gW16, gb16 = fused_loss_and_grads(x, W, b, half=True)
+    rel = lambda a, c: ((a - c).norm() / c.norm()).item()
+    assert rel(l16, l32) < 5e-3 and rel(gW16, gW32) < 2e-2 and rel(gb16, gb32) < 2e-2

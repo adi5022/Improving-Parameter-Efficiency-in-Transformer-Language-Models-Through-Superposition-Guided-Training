@@ -42,31 +42,46 @@ def _adam_(p, g, m1, v1, lr, t, beta1, beta2, eps):
     p.addcdiv_(m1, denom, value=-lr / (1 - beta1 ** t))
 
 
-def fused_loss_and_grads(x, W, b, want_loss=True):
+def fused_loss_and_grads(x, W, b, want_loss=True, half=False):
     """Forward and hand-written backward for  y = relu(x W W^T + b),  loss_r = mean (y - x)^2.
 
     Same maths as autograd gives for the sum of the per-run losses, but with far fewer passes
     over the big [R, B, n] tensors (in-place relu and subtraction, no saved temporaries, the
     constant factor applied once to the small gradients). x [R,B,n], W [R,n,m], b [R,n].
     Returns (loss_r or None, dW, db).
+
+    half=True runs the three large matrix products in float16 (tensor cores on a T4; float32
+    accumulation inside the product) and keeps everything else, including the weights, the
+    optimiser state and the loss, in float32. The constant factor is applied after the
+    products, so the small gradients are not squeezed into float16's range.
     """
     R, B, n = x.shape
     scale = 2.0 / (B * n)
-    h = torch.bmm(x, W)                                              # [R,B,m]
-    z = torch.baddbmm(b.unsqueeze(1), h, W.transpose(1, 2))          # [R,B,n]
+    if half:
+        xh, Wh = x.half(), W.half()
+        h = torch.bmm(xh, Wh)                                        # [R,B,m] fp16
+        z = torch.baddbmm(b.half().unsqueeze(1), h, Wh.transpose(1, 2)).float()
+    else:
+        h = torch.bmm(x, W)                                          # [R,B,m]
+        z = torch.baddbmm(b.unsqueeze(1), h, W.transpose(1, 2))      # [R,B,n]
     y = z.relu_()
     active = y > 0                                                   # relu'(z), 1 byte per element
     d = y.sub_(x)                                                    # y - x, in place
     loss_r = torch.einsum("rbn,rbn->r", d, d) / (B * n) if want_loss else None
     d.mul_(active)                                                   # dL/dz without the factor `scale`
-    dh = torch.bmm(d, W)                                             # [R,B,m]
-    dW = torch.baddbmm(torch.bmm(x.transpose(1, 2), dh), d.transpose(1, 2), h).mul_(scale)
+    if half:
+        dhalf = d.half()
+        dh = torch.bmm(dhalf, Wh)                                    # [R,B,m] fp16
+        dW = (torch.bmm(xh.transpose(1, 2), dh).float() + torch.bmm(dhalf.transpose(1, 2), h).float()).mul_(scale)
+    else:
+        dh = torch.bmm(d, W)                                         # [R,B,m]
+        dW = torch.baddbmm(torch.bmm(x.transpose(1, 2), dh), d.transpose(1, 2), h).mul_(scale)
     db = d.sum(dim=1).mul_(scale)
     return loss_r, dW, db
 
 
 def train_group(cfgs: list[RunConfig], device: str = "cuda", *, model_cls=None, probs_fn=None,
-                sampler=None, betas=(0.9, 0.999), eps=1e-8, fused: bool = True) -> list[dict]:
+                sampler=None, betas=(0.9, 0.999), eps=1e-8, fused: bool = True, half: bool = False) -> list[dict]:
     if not cfgs:
         return []
     key = group_key(cfgs[0])
@@ -125,7 +140,7 @@ def train_group(cfgs: list[RunConfig], device: str = "cuda", *, model_cls=None, 
         log_now = t % c0.log_every == 0 or step == c0.steps - 1
         if fused:
             with torch.no_grad():
-                loss_r, gW, gb = fused_loss_and_grads(x, W, b, want_loss=log_now)
+                loss_r, gW, gb = fused_loss_and_grads(x, W, b, want_loss=log_now, half=half)
         else:                                   # reference path: autograd
             W.grad = None
             b.grad = None
@@ -167,7 +182,7 @@ def train_group(cfgs: list[RunConfig], device: str = "cuda", *, model_cls=None, 
         Wr, br = W[r].detach(), b[r].detach()
         res = {
             "config": {**c.__dict__}, "run_id": c.run_id(), "status": status,
-            "train_seconds": seconds / R, "group_size": R, "batched": True,
+            "train_seconds": seconds / R, "group_size": R, "batched": True, "precision": "fp16-matmul" if half else "fp32",
             "train_log_steps": log_steps[:stop], "train_log_loss": col[:stop].tolist(),
             "final_train_loss": float(col[stop - 1]), "test_loss": float("nan"),
             "phi_half": metrics.represented_fraction(Wr, 0.5),

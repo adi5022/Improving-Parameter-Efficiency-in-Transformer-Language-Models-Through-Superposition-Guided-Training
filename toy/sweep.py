@@ -56,7 +56,7 @@ def _save(result: dict, out_dir: Path, git: dict) -> None:
     result["git"] = git
     torch.save(result, out_dir / f"{result['run_id']}.pt")
     line = {"run_id": result["run_id"], "status": result["status"], **result["config"],
-            **{k: result[k] for k in SCALARS}, "git_commit": git["commit"]}
+            **{k: result[k] for k in SCALARS}, "git_commit": git["commit"], "precision": result.get("precision", "fp32")}
     with (out_dir / "summary.jsonl").open("a") as f:
         f.write(json.dumps(line) + "\n")
 
@@ -121,6 +121,8 @@ def main(argv=None) -> int:
     p.add_argument("--allow-dirty", action="store_true", help="run with uncommitted code (results are marked)")
     p.add_argument("--no-batch", action="store_true", help="one run at a time (slow; for cross-checks)")
     p.add_argument("--max-group", type=int, default=24, help="max runs trained together on the GPU")
+    p.add_argument("--precision", choices=["fp32", "fp16"], default="fp32",
+                   help="fp16 = the three large matrix products in half precision (needs a GPU with tensor cores to pay off); results go to a separate folder <grid>-fp16 so they never mix with fp32 results")
     p.add_argument("--split", default=None,
                    help="share the grid between machines, e.g. 7,3 (relative speeds); use with --part")
     p.add_argument("--part", type=int, default=0, help="which share of --split this machine runs (0-based)")
@@ -142,12 +144,15 @@ def main(argv=None) -> int:
         configs = [replace(c, steps=300, warmup_steps=50, test_batches=2, log_every=50) for c in configs[:2]]
         out_dir = ROOT / "results" / "smoke" / args.grid
     else:
-        out_dir = ROOT / "results" / "stage0" / args.grid
+        out_dir = ROOT / "results" / "stage0" / (args.grid + ("-fp16" if args.precision == "fp16" else ""))
         if (git["commit"] is None or git["dirty_paths"]) and not args.allow_dirty:
             print("Refusing to run: commit toy/ and configs/ first (decision S0-6). "
                   f"Uncommitted: {git['dirty_paths'] or 'no commits yet'}", file=sys.stderr)
             return 1
-    run_grid(configs, out_dir, args.device, git, batched=not args.no_batch, max_group=args.max_group)
+    if args.precision == "fp16" and args.no_batch:
+        sys.exit("--precision fp16 needs the batched trainer (drop --no-batch)")
+    impl = {"half": True} if args.precision == "fp16" else {}
+    run_grid(configs, out_dir, args.device, git, batched=not args.no_batch, max_group=args.max_group, **impl)
     return 0
 
 
