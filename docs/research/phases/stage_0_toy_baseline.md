@@ -169,3 +169,15 @@ Observations, preliminary (3 seeds):
 - **Noise at strongly negative gamma comes from single bad seeds**, not a general wobble. G-A, gamma = -1, m = 100: seed losses 4.4e-5, 7.7e-5, 4.7e-5; gamma = -0.55 at the same width: 5.6e-5, 6.0e-5, 5.7e-5 (seeds agree within about 7%). G-B, alpha = 1.5, gamma = -1: m = 100 seeds 9.5e-6 and 4.0e-5 (phi_1/2 = 1.0 for both), which makes the loss-vs-width curve bump upward at m = 100. Cause not investigated (hypotheses: the optimiser settling into a worse arrangement, learning rate too high at the end; not tested).
 - row_norms_GA.png pools the 3 seeds (about 3,000 rows): at gamma = +1, m = 100 about 240 rows (80 per seed, phi = 0.084) have norm near 1 and the rest near 0; at gamma = -1 almost all rows have norm 1.05-1.2.
 - G-B uses 2 seeds and only widths up to 100 in the figure, so its curves are rougher (for example a step at m = 15 to 25 for alpha = 2, gamma = +0.55).
+
+## 12. Step A: scouting grid G-C (run 2026-11-14 on Colab T4s; commits 14c6939 fp32, e0b1e72 fp16)
+
+Grid: alpha = 1, the 7 widths of G-A, gamma in {-2, -1.5, -0.75, -0.3}, 3 seeds = 84 runs, none failed. Files: results/colab/fp32 and results/colab/fp16 (summary.jsonl + report.json each, unzipped from the small zips). Together with G-A this gives 11 gamma values per width.
+
+**Where the best gamma is (fp32, 3 seeds, mean test error):** the curve is flat between about gamma = -2 and -0.55. Best value per width: -0.3 (m = 10), -1.5 (15), -1.0 (25), -1.0 (39), -1.5 (63), -2.0 (100), -2.0 (150). At m <= 63 the values from -2 to -0.55 differ by 1-5%, inside the seed noise, so no single best value can be named. At m = 100 and 150 gamma = -2 is lowest (5.31e-5 and 2.82e-5) but the seed spread there is 25-35%, so it is not distinguishable. The earlier concern (best value at the edge of the grid, so a stronger baseline might lie beyond it) is largely answered: going beyond -1 improves the best error by at most 5% at m = 100 and 11% at m = 150 (noisy), and by 2% or less elsewhere.
+
+**Noise:** relative seed spread of the new values is 0-8% at m <= 63 and 17-36% at gamma <= -0.75 for m = 100-150, against 6% (m = 100) and 13% (m = 150) at gamma = -0.3. Strongly negative gamma remains the noisiest at the widest sizes.
+
+**fp16 (matrix products in half precision, rest in fp32) vs fp32, same 84 runs:** median difference in test error 0.14%, worst 7.9%; median difference is 0.04x the median seed spread (3.74%). The worst difference is one run; not investigated, and the widest widths have spreads of 25-36%, so it is within normal noise there. Training time on the T4: 29.4 min (fp32) vs 25.8 min (fp16), about 12% less. fp32 on the T4 took 29.4 min for 84 runs (0.35 min per run) against an estimated 38 min on the GTX 1660 Ti.
+
+**Conclusion (preliminary, 3 seeds):** fp16 matches fp32 within noise but saves only about 12%, so it is not worth a separate result category; keep fp32 for the baseline. The best-gamma plateau means the yardstick should be defined as the best of several gamma values per width, with many seeds, not one named gamma.

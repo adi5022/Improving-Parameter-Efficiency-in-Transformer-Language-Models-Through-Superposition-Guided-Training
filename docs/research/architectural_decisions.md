@@ -163,3 +163,8 @@ The user agreed to add a tree-structured toy variant (candidate 1b) to Stage 1 a
 Decision: add grid G-C to configs/stage0.json: alpha = 1, the same 7 widths as G-A, weight decay gamma in {-2.0, -1.5, -0.75, -0.3}, 3 seeds = 84 runs, to find where the best gamma lies before the multi-seed baseline runs. Reason: in G-A the best gamma was -1.0 (the edge of the grid) at m = 25-100 and -0.55 at m = 10, 15, 150. Evidence: stage_0_toy_baseline.md section 11. Run on a Colab T4 (full float32, so numbers stay comparable with G-A).
 Not decided yet: the final seed count (proposed 10) and the final gamma set for it; both depend on G-C.
 Note: the user asked for the run after being shown the four values and the plan; if they only meant the notebook, treat this entry as proposed.
+
+## S0-9 — Step B baseline runs, grid G-D (2026-11-15) — approved by the user's instruction to set it up for two Kaggle accounts
+
+Decision: add grid G-D to configs/stage0.json: alpha = 1, the 7 widths, gamma in {-2, -1, -0.55, -0.3, 0}, seeds 3-9 = 245 runs, fp32. Seeds 0-2 for the same gamma values already exist (G-A: -1, -0.55, 0; G-C: -2, -0.3), so pooled data is 10 seeds per (width, gamma) = 350 runs without repeating 105 runs. Baseline yardstick: best mean over these gamma values at each width; extra seeds only where still noisy. Reason: G-C showed a flat region between about -2 and -0.55 (stage_0_toy_baseline.md section 12). fp16 not used (only about 12% faster).
+Caveats: seeds 0-2 come from other GPUs (GTX 1660 Ti, Colab T4) than seeds 3-9, so the pooled data mixes hardware; each saved run records its GPU. Not yet decided: whether more seeds are needed at m = 100-150, and the gate margin for the Stage 1 comparison.

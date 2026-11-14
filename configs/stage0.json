@@ -31,6 +31,13 @@
       "width": [10, 15, 25, 39, 63, 100, 150],
       "gamma": [-2.0, -1.5, -0.75, -0.3],
       "seed": [0, 1, 2]
+    },
+    "G-D": {
+      "purpose": "Step B (2026-11-15): extra seeds 3-9 for the gamma values chosen after G-C, to be pooled with seeds 0-2 already run in G-A (gamma -1, -0.55, 0) and G-C (gamma -2, -0.3) for 10 seeds in total; fp32; the baseline yardstick is the best gamma per width",
+      "alpha": [1.0],
+      "width": [10, 15, 25, 39, 63, 100, 150],
+      "gamma": [-2.0, -1.0, -0.55, -0.3, 0.0],
+      "seed": [3, 4, 5, 6, 7, 8, 9]
     }
   },
   "gates_draft": {
