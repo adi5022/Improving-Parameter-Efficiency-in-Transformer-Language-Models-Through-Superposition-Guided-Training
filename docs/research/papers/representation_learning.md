@@ -15,7 +15,7 @@ Session 1 (2026-11-11). Records: [../paper_library.md](../paper_library.md).
 - SoLU (SUP_2022_003): more explainable neurons, ≈ equal loss, hidden features.
 - Weight-sparse transformers (RAT_2025_004, OpenAI 2025, level P): ~16× smaller circuits at matched loss; **100–1,000× compute** for equal capability.
 - MoE-X (RAT_2025_005, ICML 2025, level P): better chess interpretability; language perplexity better than (non-matched) GPT-2, mixed vs a Switch MoE baseline.
-- Monet (RAT_2024_006), Codebook features (RAT_2023_007): interpretability at "no / modest" capability cost (abstract level).
+- Monet (RAT_2024_006, read at level P 2026-11-14): average accuracy is **below** a size-matched dense LLaMA at every scale in its Table 2 (0-shot 0.453/0.478/0.511 vs 0.463/0.484/0.520; no perplexity reported), so "without degrading general performance" is a small-cost claim, not parity. Codebook features (RAT_2023_007): interpretability at "modest" capability cost (abstract level, not yet read).
 
 **Reading:** the consistent finding across serious efforts is *interpretability at roughly equal or lower capability*. None demonstrates a capability gain at matched parameters, data and compute.
 
@@ -48,6 +48,7 @@ Session 1 (2026-11-11). Records: [../paper_library.md](../paper_library.md).
 
 ## 4. Open items
 
-- Full read of RAT_2025_004 capability numbers; RAT_2024_006 Monet results; RAT_2023_007 performance table.
+- RAT_2024_006 Monet done (level P, 2026-11-14). Still open: full read of RAT_2025_004 capability numbers; RAT_2023_007 performance table.
+- Packing-type regulariser precedent: RAT_2018_011 (minimum hyperspherical energy, level F partial) penalises normalised weight vectors and is evidenced only on vision classifiers; SUP_2026_004's λ‖tril(DᵀD)‖² on an SAE decoder is the same frame-potential form but is aimed at intervenability, not capacity.
 - Examine DeCov (1511.06068) to fix the classical baseline.
 - Search once more for "SAE regulariser pretraining from scratch" under alternative terms.

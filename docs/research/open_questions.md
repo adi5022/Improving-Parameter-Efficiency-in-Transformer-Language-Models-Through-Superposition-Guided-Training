@@ -17,10 +17,12 @@ Lifecycle: Open → Researching → Answered (questions are never deleted). Last
 
 | ID | Question | Status |
 |---|---|---|
-| Q-LIT-1 | Upgrade central (★) sources from A/S/P to verified full-text reads: SUP_2026_004 (first), SUP_2025_002 remainder, SAE_2025_002, SAE_2025_003, SAE_2025_009, RAT_2025_004 capability numbers, RAT_2024_006, RAT_2023_007, KD_2025_001 App. A & G.4, QNT_2023_001, QNT_2025_002, QNT_2026_003. All are open access; **no user-provided PDFs needed so far.** | Open |
+| Q-LIT-1 | Upgrade central (★) sources from A/S/P to verified full-text reads: SUP_2026_004 (first), SUP_2025_002 remainder, SAE_2025_002, SAE_2025_003, SAE_2025_009, RAT_2025_004 capability numbers, RAT_2024_006, RAT_2023_007, KD_2025_001 App. A & G.4, QNT_2023_001, QNT_2025_002, QNT_2026_003. All are open access; **no user-provided PDFs needed so far.** | **Partly done 2026-11-14.** Read page by page (level F): SUP_2026_004, SAE_2025_002, SAE_2025_003, SAE_2025_009, RAT_2018_011 (pp. 1-3, 6-8), SUP_2022_001 (pp. 3-17). Read as HTML full text (level P): SAE_2024_001, SAE_2024_004, SAE_2024_010, SAE_2025_005, SAE_2025_006, SAE_2024_011, SAE_2025_012, RAT_2024_006, RAT_2025_013, SUP_2022_005, LMT_2025_006, LMT_2024_005, LMT_2025_007, QNT_2023_001, QNT_2025_002, QNT_2026_003, KD_2025_001 (App. A-D.4), plus new SUP_2022_008, SAE_2025_014, LMT_2025_010. **Still open:** RAT_2025_004 capability numbers, RAT_2023_007, KD_2025_001 G.4 and the fitted law, the rest of SUP_2022_001 (geometry, computation in superposition), Henighan 2023, SAE_2025_007/008/013, plus a PDF-level spot-check of the P-level numbers before any paper draft. Two papers could not be located (see reading_log.md "Needs user-provided PDF"). |
 | Q-LIT-2 | Prior-art check for gap G1 with alternative terms ("dictionary learning regulariser pretraining", "sparse coding auxiliary loss transformer", "SAE-regularized pretraining", OpenReview search for ICLR 2026 / NeurIPS 2026 submissions). | Open |
-| Q-LIT-3 | Examine the "not yet examined" list in paper_library.md (DeCov, Jermyn 2022, Chinchilla, Pythia, Muon, Cramming, KD foundations, PTQ methods). | Open |
-| Q-LIT-4 | Does SUP_2026_004's orthogonality regulariser act on model weights during training (direct overlap with G1) or on an SAE? | Open |
+| Q-LIT-3 | Examine the "not yet examined" list in paper_library.md (DeCov, Jermyn 2022, Chinchilla, Pythia, Muon, Cramming, KD foundations, PTQ methods). | Partly done 2026-11-14: Jermyn 2022, Scherlis 2022 and "Muon is Scalable" examined (level P). Rest still open. |
+| Q-LIT-4 | Does SUP_2026_004's orthogonality regulariser act on model weights during training (direct overlap with G1) or on an SAE? | **Answered at level F (2026-11-14, PDF pp. 1-10 and 14-20 read):** it acts on the decoder of a TopK SAE (Eq. 1); the LM is then LoRA-fine-tuned around the frozen SAE on MetaMathQA (fine-tuning, not pretraining). No overlap with G1; the direction (less overlap) is opposite to this project's. |
+
+**Pointer, Q-LIT-2 (2026-11-14):** first prior-art pass done; see [prior_art_search.md](prior_art_search.md) (search log, closeness table, novelty per Stage 1 candidate). No identical prior work found; the penalty forms for 1a already exist (Gao 2019, Bank and Giryes, MHE); 1b has no trained-toy precedent found. Q-LIT-2 stays open for the unexamined items listed there. Q-LIT-4 answered at level P: SUP_2026_004's penalty acts on the SAE decoder, not on LM weights during pretraining.
 
 ## Design (raised by the user's clarification, 2026-11-11)
 
@@ -31,7 +33,7 @@ Lifecycle: Open → Researching → Answered (questions are never deleted). Last
 | Q-DES-3 | Exactly what "SAE deltas" contributes to the measurement (user: reconstruction loss considered; delta patching for anything inserted). | Partly answered |
 | Q-DES-4 | Joint SAE training safeguards (D-09): stop-gradient, reconstruction-quality gate, independent ruler. | Proposed |
 | Q-DES-5 | How "performs similar" is defined for the A-vs-B quantised comparison (metric and margin). | Open |
-| Q-LIT-5 | Literature on knowledge storage per parameter (e.g. Allen-Zhu & Li, "Physics of Language Models 3.3: knowledge capacity scaling laws") — not yet examined; needed for the fact-storage test. | Open |
+| Q-LIT-5 | Literature on knowledge storage per parameter (e.g. Allen-Zhu & Li, "Physics of Language Models 3.3: knowledge capacity scaling laws") — not yet examined; needed for the fact-storage test. | Partly answered 2026-11-14 (level P): Allen-Zhu & Li (~2 bits/param at 1000 exposures, ≥ 1 at 100, int4 halves it) and Morris et al. (~3.6 bits/param on random tokens, small models, lower bound); neither gives a number for ordinary text, so the Stage 4 test needs its own synthetic-fact design. |
 
 ## Scientific (to be answered by experiments)
 

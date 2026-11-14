@@ -34,5 +34,5 @@ Postpone KD to an optional late phase. If kept: a teacher with a small or shared
 
 ## 5. Open items
 
-- Read KD_2025_001 Appendix A (limitations) and G.4 (top-k/top-p truncation).
+- KD_2025_001 Appendix A (limitations) read 2026-11-14 (level P): the paper covers only full-distribution logit KD, language modelling on English C4, transformer-to-transformer, one shared data distribution, λ = 1 and temperature 1; the students in the portion read are 1B-30B. So the capacity-gap and compute-threshold results are **not** established for sub-100M students, sequence-level KD, or cross-architecture teachers. Still unread: G.4 (top-k/top-p truncation), the fitted law (Eq. 8, App. F).
 - Examine Hinton 2015, Kim & Rush 2016, cross-tokenizer KD (e.g. ULD, arXiv:2402.12030).

@@ -156,3 +156,10 @@ The user agreed to add a tree-structured toy variant (candidate 1b) to Stage 1 a
 - 2026-11-11 (later, same session): user clarified the proposal; U-01…U-08 recorded; D-09 added.
 - 2026-11-11 (later, same session): S0-1…S0-7 approved by the user.
 - 2026-11-14: user agreed to add Stage 1 candidate 1b (tree-structured toy features); design not yet proposed.
+
+
+## S0-8 — Step A scouting grid G-C (2026-11-15) — approved by the user's instruction to run it
+
+Decision: add grid G-C to configs/stage0.json: alpha = 1, the same 7 widths as G-A, weight decay gamma in {-2.0, -1.5, -0.75, -0.3}, 3 seeds = 84 runs, to find where the best gamma lies before the multi-seed baseline runs. Reason: in G-A the best gamma was -1.0 (the edge of the grid) at m = 25-100 and -0.55 at m = 10, 15, 150. Evidence: stage_0_toy_baseline.md section 11. Run on a Colab T4 (full float32, so numbers stay comparable with G-A).
+Not decided yet: the final seed count (proposed 10) and the final gamma set for it; both depend on G-C.
+Note: the user asked for the run after being shown the four values and the plan; if they only meant the notebook, treat this entry as proposed.

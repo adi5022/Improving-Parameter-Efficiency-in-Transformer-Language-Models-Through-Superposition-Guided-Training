@@ -138,3 +138,34 @@ The one-run-at-a-time runner left the GPU mostly idle (about 3.7 ms per step, do
 - **Measured (21 runs/group, 300-step benchmark), autograd -> fused:** m = 10: 24.6 -> 17.4 ms/step; m = 100: 37.1 -> 30.2; m = 150: 43.4 -> 36.4. Peak GPU memory 1.3 -> 0.5 GB. (The earlier 34.8 ms at m = 100 was a separate measurement; run-to-run noise is a few ms.)
 - **Updated G-A estimate:** about 7 groups x 20,000 steps x 17-36 ms, i.e. roughly 50-60 min (estimate, not a full run).
 - **What is left:** at m = 100 the three matrix-multiply kernels take about 18 of about 24 GPU-ms per step (profiled), so the step is close to matmul-bound on this card; remaining overhead is data sampling (about 2.4 ms) and a few elementwise passes. Further gains would be roughly 10%, so no more optimisation is planned. fp16 was not considered because it changes the numerics (the card has no tensor cores).
+
+### 10.2 Commit hashes changed (2026-11-14)
+
+CLAUDE.md was removed from git history (rewrite + force-push), so commit hashes changed. Stage 0 results record the old hash, which no longer exists:
+
+| Recorded in results | Now |
+|---|---|
+| `f787ed559b7f498ad33c839f32f8a26714697e96` (batched trainer with fused backward) | `7b31296` |
+| `c59f042` (first commit) | `288bbe3` |
+
+The code in `toy/` and `configs/` is identical under both hashes; only the history was rewritten.
+
+## 11. Stage 0 results (run 2026-11-14, report: results/stage0/report.md)
+
+Both grids finished with 0 failed runs (G-A 147, G-B 72; GTX 1660 Ti; batched fused trainer). G-A took 64.2 min of GPU time (groups 337 s at m = 10 up to 1,023 s at m = 150), G-B 34.0 min, about 0.45 min per run (summed from the saved results). An earlier version of this section said 1 h 40 min and 40 min; that was wrong. Commits recorded: `f787ed5` (G-A, old hash, now `7b31296`) and `bf6a614` (G-B); toy/ and configs/ are identical.
+
+Gates against the committed draft thresholds: **G0.1 PASS** (phi_1/2 = 1.000 at gamma = -1, 0.084 at gamma = +1); **G0.2 PASS** (strong-superposition exponent 1.162 +/- 0.059 over 7 widths); **G0.3 PASS** (alpha = 1.5: 0.531 vs expected 0.50; alpha = 2.0: 0.857 vs expected 1.00).
+
+Observations, preliminary (3 seeds):
+- Best gamma on the grid is -1.0 at m = 25-100 (the edge of the grid) and -0.55 at m = 10, 15, 150, so the optimum may lie beyond the grid and the grid is coarse.
+- Seed s.d. of test loss is 1-6% at m <= 39 but up to 32% (gamma = -1, m = 100) and 30% (m = 150) at the wide end. L*(1.5m) is roughly 0.4-0.7 of L*(m), so the target gap is resolvable at small widths and noisier at large widths.
+- Exponents by gamma: -1.00: 1.16, -0.55: 1.17, 0: 0.93, +1.00: 0.17.
+- Not yet done: the 5-seed top-up and finer gamma grid the roadmap's Stage 1 test needs; gate thresholds for Stage 1; looking at the figures (written to figures/stage0/ but not inspected by me).
+
+### 11.1 Figure review (2026-11-14, by Claude; user asked to see the figures first)
+
+- **All 1,000 features are already stored at gamma <= -0.55 at every width, including m = 10** (phi_1/2 = 1.0, phi_vs_gamma_GA.png). The remaining room for a penalty is therefore in how the directions are arranged (the loss coefficient), not in how many features get a direction.
+- **Gap between ordinary weight decay (gamma = 0) and the best gamma** is about 1.3x at m = 10, about 4x at m = 63 and about 1.8x at m = 150 (L*(m) table); it is not constant across widths.
+- **Noise at strongly negative gamma comes from single bad seeds**, not a general wobble. G-A, gamma = -1, m = 100: seed losses 4.4e-5, 7.7e-5, 4.7e-5; gamma = -0.55 at the same width: 5.6e-5, 6.0e-5, 5.7e-5 (seeds agree within about 7%). G-B, alpha = 1.5, gamma = -1: m = 100 seeds 9.5e-6 and 4.0e-5 (phi_1/2 = 1.0 for both), which makes the loss-vs-width curve bump upward at m = 100. Cause not investigated (hypotheses: the optimiser settling into a worse arrangement, learning rate too high at the end; not tested).
+- row_norms_GA.png pools the 3 seeds (about 3,000 rows): at gamma = +1, m = 100 about 240 rows (80 per seed, phi = 0.084) have norm near 1 and the rest near 0; at gamma = -1 almost all rows have norm 1.05-1.2.
+- G-B uses 2 seeds and only widths up to 100 in the figure, so its curves are rougher (for example a step at m = 15 to 25 for alpha = 2, gamma = +0.55).

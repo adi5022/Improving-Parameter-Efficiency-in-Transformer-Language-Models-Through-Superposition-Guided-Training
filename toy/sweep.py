@@ -3,6 +3,7 @@
     python -m toy.sweep --grid G-A                  # full grid, resumes where it stopped
     python -m toy.sweep --grid G-A --dry-run        # list runs, train nothing
     python -m toy.sweep --grid G-A --smoke          # 2 runs x 300 steps into results/smoke/
+    python -m toy.sweep --grid G-A --split 7,3 --part 0   # this machine's 70% of the grid (other: --part 1)
 
 Runs with the same width are trained together in one batched loop on the GPU
 (toy/batched.py); --no-batch runs them one at a time, --max-group caps the batch.
@@ -68,6 +69,29 @@ def make_groups(todo: list[RunConfig], max_group: int) -> list[list[RunConfig]]:
     return [runs[i:i + max_group] for runs in by_key.values() for i in range(0, len(runs), max_group)]
 
 
+def split_configs(configs: list[RunConfig], weights: list[float], part: int, max_group: int = 24) -> list[RunConfig]:
+    """The runs one machine should do when a grid is shared between machines.
+
+    Whole batched groups are dealt out, biggest first, to the part furthest below its share
+    (share = weight / sum of weights; a group's cost is runs x width x steps). The result
+    depends only on the grid, the weights and max_group, so every machine computes the same
+    split, and every run lands on exactly one part.
+    """
+    if not 0 <= part < len(weights) or any(w <= 0 for w in weights):
+        raise ValueError("part must index into weights, and weights must be positive")
+    groups = make_groups(configs, max_group)
+    cost = lambda g: len(g) * g[0].width * g[0].steps
+    load = [0.0] * len(weights)
+    mine: list[list[RunConfig]] = []
+    for g in sorted(groups, key=lambda g: (-cost(g), g[0].run_id())):
+        k = min(range(len(weights)), key=lambda i: (load[i] / weights[i], i))
+        load[k] += cost(g)
+        if k == part:
+            mine.append(g)
+    keep = {c.run_id() for g in mine for c in g}
+    return [c for c in configs if c.run_id() in keep]
+
+
 def run_grid(configs: list[RunConfig], out_dir: Path, device: str, git: dict, *,
              batched: bool = True, max_group: int = 24, **impl) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -90,16 +114,23 @@ def run_grid(configs: list[RunConfig], out_dir: Path, device: str, git: dict, *,
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--grid", required=True, choices=["G-A", "G-B"])
+    p.add_argument("--grid", required=True, choices=sorted(json.loads(CONFIG.read_text())["grids"]))
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--smoke", action="store_true", help="2 runs x 300 steps, written to results/smoke/")
     p.add_argument("--allow-dirty", action="store_true", help="run with uncommitted code (results are marked)")
     p.add_argument("--no-batch", action="store_true", help="one run at a time (slow; for cross-checks)")
     p.add_argument("--max-group", type=int, default=24, help="max runs trained together on the GPU")
+    p.add_argument("--split", default=None,
+                   help="share the grid between machines, e.g. 7,3 (relative speeds); use with --part")
+    p.add_argument("--part", type=int, default=0, help="which share of --split this machine runs (0-based)")
     args = p.parse_args(argv)
 
     configs = grid_configs(args.grid)
+    if args.split:
+        weights = [float(w) for w in args.split.split(",")]
+        configs = split_configs(configs, weights, args.part, args.max_group)
+        print(f"part {args.part} of split {args.split}: {len(configs)} of the grid's runs")
     git = git_state()
     if args.dry_run:
         for c in configs:
