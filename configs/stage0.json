@@ -45,6 +45,17 @@
         {"alpha": [1.0], "width": [63, 100, 150], "gamma": [-3.0, -4.0], "seed": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]},
         {"alpha": [1.0], "width": [225], "gamma": [-4.0, -3.0, -2.0, -1.0, 0.0], "seed": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]}
       ]
+    },
+    "G-S1P": {
+      "purpose": "Stage 1 pilot (proposals D-S1-1..3, to find the useful range of the penalty strength lambda; seeds 0-2 only, the verdict uses seeds 3-9). Per width, three arms: plain overlap penalty with gamma 0; plain penalty with the best baseline gamma for that width (15: -0.55, 25: -1.0, 63: -2.0, from the 10-seed table); frequency-weighted penalty with the same best gamma. lambda in {1e-4, 1e-3, 1e-2, 1e-1} (moved up one decade from the first proposal after a scale check at m = 25: at the baseline solution lambda x |grad P| / |grad of the task loss| is 0.001 at 1e-5, 0.009 at 1e-4, 0.09 at 1e-3, 0.9 at 1e-2). fp32. Results go to results/stage0/G-S1P.",
+      "parts": [
+        {"alpha": [1.0], "width": [15], "gamma": [0.0, -0.55], "seed": [0, 1, 2], "penalty": ["plain"], "lam": [1e-4, 1e-3, 1e-2, 1e-1]},
+        {"alpha": [1.0], "width": [15], "gamma": [-0.55], "seed": [0, 1, 2], "penalty": ["weighted"], "lam": [1e-4, 1e-3, 1e-2, 1e-1]},
+        {"alpha": [1.0], "width": [25], "gamma": [0.0, -1.0], "seed": [0, 1, 2], "penalty": ["plain"], "lam": [1e-4, 1e-3, 1e-2, 1e-1]},
+        {"alpha": [1.0], "width": [25], "gamma": [-1.0], "seed": [0, 1, 2], "penalty": ["weighted"], "lam": [1e-4, 1e-3, 1e-2, 1e-1]},
+        {"alpha": [1.0], "width": [63], "gamma": [0.0, -2.0], "seed": [0, 1, 2], "penalty": ["plain"], "lam": [1e-4, 1e-3, 1e-2, 1e-1]},
+        {"alpha": [1.0], "width": [63], "gamma": [-2.0], "seed": [0, 1, 2], "penalty": ["weighted"], "lam": [1e-4, 1e-3, 1e-2, 1e-1]}
+      ]
     }
   },
   "gates_draft": {

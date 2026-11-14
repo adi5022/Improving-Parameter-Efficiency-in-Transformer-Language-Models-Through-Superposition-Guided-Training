@@ -36,9 +36,12 @@ class RunConfig:
     final_lr_frac: float = 0.05
     test_batches: int = 100          # test set = test_batches * batch_size samples
     log_every: int = 100
+    lam: float = 0.0                 # Stage 1: strength of the overlap penalty (0 = none)
+    penalty: str = "none"            # "none" | "plain" | "weighted" (batched trainer only, toy/batched.py)
 
     def run_id(self) -> str:
-        return f"a{self.alpha:g}_m{self.width}_g{self.gamma:+.2f}_s{self.seed}"
+        base = f"a{self.alpha:g}_m{self.width}_g{self.gamma:+.2f}_s{self.seed}"
+        return base if self.penalty == "none" else f"{base}_p{self.penalty}{self.lam:g}"
 
 
 def _defaults(model_cls, optimizer_cls, probs_fn, sampler):
@@ -56,6 +59,8 @@ def _defaults(model_cls, optimizer_cls, probs_fn, sampler):
 
 def train_run(cfg: RunConfig, device: str = "cuda", *, model_cls=None, optimizer_cls=None,
               probs_fn=None, sampler=None) -> dict:
+    if cfg.penalty != "none":
+        raise NotImplementedError("the overlap penalty is only in the batched trainer (toy/batched.py)")
     model_cls, optimizer_cls, probs_fn, sampler = _defaults(model_cls, optimizer_cls, probs_fn, sampler)
 
     torch.manual_seed(cfg.seed)

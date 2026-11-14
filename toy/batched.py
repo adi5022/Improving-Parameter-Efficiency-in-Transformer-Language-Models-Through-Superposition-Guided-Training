@@ -80,6 +80,48 @@ def fused_loss_and_grads(x, W, b, want_loss=True, half=False):
     return loss_r, dW, db
 
 
+NORM_FLOOR = 1e-2   # rows shorter than this count as 1e-2 long when taking directions (dead rows must not blow up the gradient)
+
+
+def penalty_value(W, w):
+    """Overlap penalty per run (differentiable; the reference for the hand-written gradient).
+
+    P = 1/(n(n-1)) * sum over pairs i != j of  w_i w_j cos^2(W_i, W_j).   W [R,n,m], w [R,n].
+    With w = 1 this is the mean squared overlap the bench and metrics.mean_squared_overlap show.
+    """
+    n = W.shape[1]
+    U = W / W.norm(dim=2, keepdim=True).clamp_min(NORM_FLOOR)
+    G = torch.bmm(U, U.transpose(1, 2))
+    M = G * (w.unsqueeze(2) * w.unsqueeze(1))
+    diag = (w * w * (U * U).sum(2) ** 2).sum(1)
+    return (torch.einsum("rij,rij->r", M, G) - diag) / (n * (n - 1))
+
+
+def penalty_and_grad(W, w, want_value=True):
+    """Hand-written value and gradient of `penalty_value` (about two n x n x m products per run).
+
+    dP/dU_i = 4/(n(n-1)) * sum_{j != i} w_i w_j (U_i.U_j) U_j, then through U = W/|W| per row:
+    dW_i = (dU_i - (dU_i.U_i) U_i) / |W_i|, or dU_i / floor for rows under the norm floor.
+    Returns (P_r or None, dW).
+    """
+    R, n, m = W.shape
+    raw = W.norm(dim=2, keepdim=True)
+    norm = raw.clamp_min(NORM_FLOOR)
+    U = W / norm
+    G = torch.bmm(U, U.transpose(1, 2))
+    M = G * (w.unsqueeze(2) * w.unsqueeze(1))
+    gdiag = (U * U).sum(2, keepdim=True)                       # [R,n,1] = |U_i|^2
+    c = 4.0 / (n * (n - 1))
+    gU = torch.bmm(M, U).sub_(w.unsqueeze(2) ** 2 * gdiag * U).mul_(c)   # drop the j = i term
+    inside = (raw > NORM_FLOOR)
+    proj = gU - (gU * U).sum(2, keepdim=True) * U
+    dW = torch.where(inside, proj, gU) / norm
+    value = None
+    if want_value:
+        value = (torch.einsum("rij,rij->r", M, G) - (w * w * gdiag.squeeze(2) ** 2).sum(1)) / (n * (n - 1))
+    return value, dW
+
+
 def train_group(cfgs: list[RunConfig], device: str = "cuda", *, model_cls=None, probs_fn=None,
                 sampler=None, betas=(0.9, 0.999), eps=1e-8, fused: bool = True, half: bool = False) -> list[dict]:
     if not cfgs:
@@ -126,6 +168,23 @@ def train_group(cfgs: list[RunConfig], device: str = "cuda", *, model_cls=None, 
     mW, vW = torch.zeros_like(W), torch.zeros_like(W)
     mb, vb = torch.zeros_like(b), torch.zeros_like(b)
 
+    # overlap penalty (Stage 1): per-run strength and per-feature weights (all ones = plain, sqrt-frequency = weighted)
+    kinds = {c.penalty for c in cfgs}
+    if not kinds <= {"none", "plain", "weighted"}:
+        raise ValueError(f"unknown penalty {kinds - {'none', 'plain', 'weighted'}}")
+    lam = torch.tensor([c.lam if c.penalty != "none" else 0.0 for c in cfgs], dtype=torch.float32, device=device)
+    any_pen = bool((lam > 0).any())
+    pen_w = None
+    if any_pen:
+        rows = []
+        for c in cfgs:
+            if c.penalty == "weighted":
+                s = probs[c.alpha].sqrt()
+                rows.append(s / s.mean())
+            else:
+                rows.append(torch.ones(n, device=device))
+        pen_w = torch.stack(rows)
+
     log_steps: list[int] = []
     log_loss: list[torch.Tensor] = []
     if device.startswith("cuda"):
@@ -141,13 +200,17 @@ def train_group(cfgs: list[RunConfig], device: str = "cuda", *, model_cls=None, 
         if fused:
             with torch.no_grad():
                 loss_r, gW, gb = fused_loss_and_grads(x, W, b, want_loss=log_now, half=half)
+                if any_pen:
+                    _, gpen = penalty_and_grad(W, pen_w, want_value=False)
+                    gW.add_(gpen * lam.view(R, 1, 1))
         else:                                   # reference path: autograd
             W.grad = None
             b.grad = None
             h = torch.bmm(x, W)
             y = torch.relu(torch.bmm(h, W.transpose(1, 2)) + b.unsqueeze(1))
             loss_r = ((y - x) ** 2).mean(dim=(1, 2))
-            loss_r.sum().backward()
+            total = loss_r.sum() + ((lam * penalty_value(W, pen_w)).sum() if any_pen else 0.0)
+            total.backward()
             gW, gb = W.grad, b.grad
 
         with torch.no_grad():

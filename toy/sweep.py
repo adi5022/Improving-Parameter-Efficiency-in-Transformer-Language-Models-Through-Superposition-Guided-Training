@@ -54,8 +54,9 @@ def grid_configs(grid_name: str, config_path: Path = CONFIG) -> list[RunConfig]:
     rects = grid["parts"] if "parts" in grid else [grid]
     out, seen = [], set()
     for rect in rects:
-        for a, m, g, s in itertools.product(rect["alpha"], rect["width"], rect["gamma"], rect["seed"]):
-            c = RunConfig(alpha=a, width=m, gamma=g, seed=s, **defaults)
+        for a, m, g, s, pen, lam in itertools.product(rect["alpha"], rect["width"], rect["gamma"], rect["seed"],
+                                                      rect.get("penalty", ["none"]), rect.get("lam", [0.0])):
+            c = RunConfig(alpha=a, width=m, gamma=g, seed=s, penalty=pen, lam=lam, **defaults)
             if c.run_id() not in seen:
                 seen.add(c.run_id())
                 out.append(c)

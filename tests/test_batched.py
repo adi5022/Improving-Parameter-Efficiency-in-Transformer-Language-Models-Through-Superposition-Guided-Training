@@ -145,3 +145,63 @@ def test_grid_with_parts_is_the_union_of_its_rectangles(tmp_path):
     p.write_text(_json.dumps(spec))
     runs = grid_configs("X", p)
     assert len(runs) == 6 and len({c.run_id() for c in runs}) == 6
+
+
+# ---- Stage 1: overlap penalty -------------------------------------------------------------
+
+def _pen_inputs(weighted):
+    torch.manual_seed(1)
+    R, n, m = 3, 30, 5
+    W = torch.randn(R, n, m)
+    W[:, :3] *= 1e-4                                   # rows under the norm floor must not break the gradient
+    W[:, 3:6] *= 0.3
+    w = torch.rand(R, n) + 0.2 if weighted else torch.ones(R, n)
+    return W, w
+
+
+@pytest.mark.parametrize("weighted", [False, True])
+def test_penalty_gradient_matches_autograd(weighted):
+    from toy.batched import penalty_and_grad, penalty_value
+    W, w = _pen_inputs(weighted)
+    Wg = W.clone().double().requires_grad_()
+    P = penalty_value(Wg, w.double())
+    P.sum().backward()
+    value, dW = penalty_and_grad(W.double(), w.double())
+    assert torch.allclose(value, P.detach(), rtol=1e-10)
+    assert torch.allclose(dW, Wg.grad, rtol=1e-8, atol=1e-10)
+
+
+def test_plain_penalty_equals_mean_squared_overlap_metric():
+    from toy import metrics
+    from toy.batched import penalty_value
+    torch.manual_seed(2)
+    W = torch.randn(2, 25, 4)
+    P = penalty_value(W, torch.ones(2, 25))
+    for r in range(2):
+        assert P[r].item() == pytest.approx(metrics.mean_squared_overlap(W[r]), rel=1e-4)
+
+
+def test_penalty_training_fused_matches_autograd_and_changes_result():
+    pen = [cfg(gamma=-0.5, seed=0, penalty="plain", lam=1e-2), cfg(gamma=0.0, seed=1, penalty="weighted", lam=1e-1),
+           cfg(gamma=-0.5, seed=0)]
+    fused = train_group(pen, device="cpu", fused=True)
+    ref = train_group(pen, device="cpu", fused=False)
+    for f, r in zip(fused, ref):
+        assert torch.allclose(f["W"], r["W"], atol=1e-4)
+    assert not torch.allclose(fused[0]["W"], fused[2]["W"], atol=1e-3)        # the penalty does something
+    assert fused[0]["mso_all"] < fused[2]["mso_all"]                          # and it lowers the overlap
+    base = train_run(pen[2], device="cpu")
+    assert torch.allclose(fused[2]["W"], base["W"], atol=1e-4)               # a run without penalty is unchanged by sharing a group
+
+
+def test_run_id_unchanged_without_penalty_and_unique_with():
+    assert cfg().run_id() == "a1_m5_g+0.00_s0"
+    ids = {cfg(penalty=p, lam=l).run_id() for p in ("plain", "weighted") for l in (1e-4, 1e-3)}
+    assert len(ids) == 4
+    with pytest.raises(NotImplementedError):
+        train_run(cfg(penalty="plain", lam=1e-3), device="cpu")
+
+
+def test_unknown_penalty_rejected():
+    with pytest.raises(ValueError):
+        train_group([cfg(penalty="bogus", lam=1.0)], device="cpu")

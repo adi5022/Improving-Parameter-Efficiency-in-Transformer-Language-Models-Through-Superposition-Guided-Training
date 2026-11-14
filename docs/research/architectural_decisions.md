@@ -172,3 +172,48 @@ Caveats: seeds 0-2 come from other GPUs (GTX 1660 Ti, Colab T4) than seeds 3-9, 
 ## S0-10 — Baseline follow-up, grid G-E (2026-11-15) — approved by the user's instruction to run items 1 and 2 together
 
 Decision: add grid G-E to configs/stage0.json, two rectangles, alpha = 1, seeds 0-9, fp32: (1) gamma in {-3, -4} at widths 63, 100, 150 (60 runs), to see whether more negative weight decay still helps where -2.0 was the best of the tested values in G-D; (2) width 225 with gamma in {-4, -3, -2, -1, 0} (50 runs), so that L*(1.5 x 150) can be computed for the Stage 1 target. Reason: stage_0_toy_baseline.md section 13. grid_configs now accepts a "parts" list of rectangles (45 tests pass). Estimated about 27 and 31 min per part on two T4s (width 225 speed is extrapolated). Not decided: which gamma values to use at width 225 beyond these five, and whether widths below 63 need gamma <= -3 (the G-D results suggest not).
+
+## Stage 1 proposals D-S1-1 ... D-S1-6 — PROPOSED 2026-11-15, NOT APPROVED (write-up for the user; format of CLAUDE.md section 9.1)
+
+**Context (all six).** Stage 1 is the go/no-go test of the central idea in the toy model: with the true features known ("oracle"), does a penalty that reduces feature overlap beat the best-tuned weight decay at the same width? Baseline and target: stage_0_toy_baseline.md section 13 (10-seed L*(m); the target is L*(1.5 m)); the G-E grid (gamma -3/-4 at m = 63-150 and width 225) is still to be run and may change L*(m) at wide widths. Prior art: prior_art_search.md section 6 (the penalty form already exists in the literature, so the contribution is the controlled comparison, not a new regulariser). Roadmap gate: G1 (research_roadmap.md).
+
+### D-S1-1 Penalty form (candidate 1a)
+- **Options:** (A) frame potential: lambda x mean over pairs i != j of cos^2(W_i, W_j) over all rows of W (the same overlap number the bench shows); (B) max-coherence (largest pairwise cosine); (C) hyperspherical-energy style spreading penalty; (D) A weighted by feature frequency, so frequent features are separated first.
+- **Evidence:** form already used by Gao et al. 2019 (arXiv:1907.12009), Bank and Giryes (arXiv:1810.06049), Liu et al. MHE (RAT_2018_011, level F for pp. 1-3, 6-8), SUP_2026_004 (applied to an SAE decoder with the opposite aim), and as an illustration in SUP_2025_002 App. D.2. All are about generalisation or interventions; none tests it against tuned weight decay for packing.
+- **Advantages / disadvantages:** A is simple, smooth, cheap, already measured by our code; its weakness is that the task loss may already optimise overlaps, so it may add nothing. B is non-smooth (harder to optimise). C needs a new hyperparameter. D adds a design choice that is easy to over-tune.
+- **Recommendation:** A as the main arm, with two sub-arms: penalty alone (gamma = 0) and penalty plus norm pulling (gamma set to the best baseline value for that width), since reasoning says they push different levers. B, C, D only if A shows an effect.
+- **Consequences:** about 20% extra time per training step (two n x n x m products per run; estimate, to be measured); needs a hand-written gradient in the batched trainer, checked against autograd; per-run lambda like the existing per-run gamma.
+
+### D-S1-2 Penalty strength lambda
+- **Options:** fixed hand-picked value; sweep on a log grid with a pilot; adaptive schedule.
+- **Recommendation:** pilot sweep of lambda in {1e-5, 1e-4, 1e-3, 1e-2} (on the mean-squared-overlap scale, penalty value about 1/m; task loss is about 1e-4 to 1e-3) at 3 seeds to find the range where the penalty does something, then 3 values around that range in the final runs. Penalty strength is a tuned quantity, exactly as weight decay is in the baseline; fairness requires the same tuning effort.
+- **Consequences:** the pilot grid is a guess about scale and may need one more round.
+
+### D-S1-3 Widths and seeds
+- **Recommendation (revised 2026-11-15 after a headroom check):** widths 15, 25 and 63, with 39 as a spare; pilot with seeds 0-2, final with seeds 3-9 (7 seeds), compared with the 10-seed baseline. The earlier suggestion (25, 63, 100) is replaced because of the headroom check below.
+- **Headroom check (measured, G-A and G-D, gamma = -1):** mean squared overlap of the learned feature rows divided by the smallest value any arrangement can reach for n = 1000 rows in m dimensions (Welch bound, (n - m) / (m (n - 1)); standard result, not looked up this session): 3.05x at m = 10, 3.30x (15), 3.19x (25), 2.22x (39), 1.48x (63), 1.29x (100), 1.20x (150). So the arrangement has most room to improve at small widths and little at m >= 100, where a penalty on overlap cannot do much. The bound is not reachable for free (frequent features deserve cleaner separation than rare ones), so the ratio is an upper limit on the possible gain, not a prediction. Target error ratios to a 1.5x wider model: 1.47x (15), 1.71x (25), 1.86x (63).
+- **Why separate seeds:** choosing lambda on the same seeds that are used for the verdict flatters the penalty (same logic as the baseline's best-of-gamma selection). Selecting lambda on seeds 0-2 and judging on seeds 3-9 avoids it.
+- **Consequences:** widths 100, 150 and 225 are left out of Stage 1 (little headroom, and noise at m >= 100 is 20-28% per run).
+
+### D-S1-4 Pass criterion (gate G1) — values are my suggestion; thresholds must be fixed before the final runs
+- **Proposal:** G1 passes if, at 2 of the 3 widths, the penalty arm's mean test error on seeds 3-9 is below L*(m) by more than 10% and by more than 3 combined standard errors. Stronger success mark: reaches L*(1.5 m) within one standard error at any width.
+- **Why 10%:** at m <= 63 the standard error of L* is about 2%, so 10% is about 5 standard errors; a smaller gain would be hard to separate from noise at m = 100.
+- **Fail:** if no width passes, G1 fails and the main line stops with a written negative result ("even an oracle overlap penalty does not beat tuned weight decay in this toy model"); alternatives are in alternative_directions.md.
+- **Inconclusive:** a gain of 3-10% or one width only is reported as inconclusive, not as a pass.
+
+### D-S1-5 Order: 1a first, then the tree-structured toy (1b)
+- **Recommendation:** run 1a first (hours of compute). Treat 1b as a measurement first: does the model already share parent directions without any penalty? Its design (tree depth, branching, parent frequency, penalty form) is a separate proposal after 1a.
+- **Prior art:** Park et al. (RAT_2025_013) and Prieto et al. suggest models already organise hierarchy compactly, so 1b may find little to gain; it is exploratory.
+
+### D-S1-6 What Stage 1 does not do
+- No SAE (the true features are known), no real data, no language model, no quantisation. The penalty acts on the rows of W directly, which is the "oracle" case. The SAE-measured version is Stage 2 and is only started if G1 passes. A cheap quantisation-fragility check on packed versus unpacked toy solutions is recommended before Stage 2 (prior_art_search.md section 8) but is not part of G1.
+
+### Estimated cost and order
+Pilot: 3 widths (15, 25, 63) x 4 lambda values x 2 sub-arms x 3 seeds = 72 runs, about 30 min on a T4. Final: 3 widths x 3 lambda values x 2 sub-arms x 7 seeds = 126 runs, about 1 hour. Build and test the penalty first (gradient check against autograd; tests). Estimates use measured T4 speeds plus the 20% penalty overhead (not measured).
+
+### Amendment to D-S1-1 / D-S1-2 (made while building the code; the user agreed in chat to build and pilot)
+- **Weighted penalty promoted to a pilot arm.** The user asked why the frequency-weighted form (option D) should wait; running it later would cost another round trip, while as an extra arm in the same runs it costs about 50% more pilot runs. Arms per width: (1) plain penalty, gamma 0; (2) plain penalty with the best baseline gamma for that width (15: -0.55, 25: -1.0, 63: -2.0); (3) weighted penalty with the same gamma. The plain penalty stays as the control for the weighted one. Pilot grid G-S1P: 3 widths x 3 arms x 4 lambda x 3 seeds = 108 runs.
+- **Weighted form (fixed, not tuned):** pair weight w_i w_j with w_i = sqrt(p_i) / mean(sqrt(p)), p_i the feature's activation probability. In this oracle toy p_i is known exactly; in Stage 2 it would have to be estimated from SAE activations, so a win here is an upper bound.
+- **lambda pilot grid moved up one decade to {1e-4, 1e-3, 1e-2, 1e-1}.** Scale check at m = 25 on a trained baseline solution (gamma -1): lambda x |grad P| / |grad task loss| = 0.001 / 0.009 / 0.09 / 0.9 at lambda 1e-5 / 1e-4 / 1e-3 / 1e-2, so 1e-5 would be negligible and the interesting range probably extends above 1e-2.
+- **Implementation details (not architectural):** dead rows: directions are taken with the row norm floored at 1e-2 so near-zero rows cannot blow up the gradient; the penalty gradient is added to the task gradient before Adam; the penalty is computed in float32.
+- **Still open:** the pass margin (10% and 3 standard errors) must be confirmed before the final runs, not before the pilot. Gate thresholds in `configs/stage0.json` are still a draft.
