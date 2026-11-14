@@ -4,6 +4,7 @@
     python -m toy.sweep --grid G-A --dry-run        # list runs, train nothing
     python -m toy.sweep --grid G-A --smoke          # 2 runs x 300 steps into results/smoke/
     python -m toy.sweep --grid G-A --split 7,3 --part 0   # this machine's 70% of the grid (other: --part 1)
+    python -m toy.sweep --grid G-D --split 1,1 --part 1 --subsplit 1,1 --subpart 0   # half of the second half
 
 Runs with the same width are trained together in one batched loop on the GPU
 (toy/batched.py); --no-batch runs them one at a time, --max-group caps the batch.
@@ -126,6 +127,10 @@ def main(argv=None) -> int:
     p.add_argument("--split", default=None,
                    help="share the grid between machines, e.g. 7,3 (relative speeds); use with --part")
     p.add_argument("--part", type=int, default=0, help="which share of --split this machine runs (0-based)")
+    p.add_argument("--subsplit", default=None,
+                   help="split this machine's share again between several machines, e.g. 1,1 (use with --subpart); "
+                        "lets one half of a 1,1 split be shared without changing what the other half runs")
+    p.add_argument("--subpart", type=int, default=0, help="which share of --subsplit to run (0-based)")
     args = p.parse_args(argv)
 
     configs = grid_configs(args.grid)
@@ -133,6 +138,9 @@ def main(argv=None) -> int:
         weights = [float(w) for w in args.split.split(",")]
         configs = split_configs(configs, weights, args.part, args.max_group)
         print(f"part {args.part} of split {args.split}: {len(configs)} of the grid's runs")
+        if args.subsplit:
+            configs = split_configs(configs, [float(w) for w in args.subsplit.split(",")], args.subpart, args.max_group)
+            print(f"  sub-part {args.subpart} of sub-split {args.subsplit}: {len(configs)} runs")
     git = git_state()
     if args.dry_run:
         for c in configs:

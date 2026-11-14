@@ -122,3 +122,14 @@ def test_half_precision_gradients_close_to_float32():
     l16, gW16, gb16 = fused_loss_and_grads(x, W, b, half=True)
     rel = lambda a, c: ((a - c).norm() / c.norm()).item()
     assert rel(l16, l32) < 5e-3 and rel(gW16, gW32) < 2e-2 and rel(gb16, gb32) < 2e-2
+
+
+def test_subsplit_divides_a_part_without_changing_the_other_part():
+    from toy.sweep import split_configs
+    runs = [cfg(width=w, seed=s, gamma=g) for w in (5, 6, 7, 8, 9, 10) for s in range(4) for g in (-1.0, 0.0, 1.0)]
+    first = split_configs(runs, [1, 1], 0)
+    second = split_configs(runs, [1, 1], 1)
+    halves = [split_configs(second, [1, 1], k) for k in (0, 1)]
+    ids = sorted(c.run_id() for h in halves for c in h)
+    assert ids == sorted(c.run_id() for c in second)                 # the second half is covered once
+    assert not {c.run_id() for c in first} & set(ids)                # and nothing leaks into the first half
