@@ -37,11 +37,24 @@ class RunConfig:
     test_batches: int = 100          # test set = test_batches * batch_size samples
     log_every: int = 100
     lam: float = 0.0                 # Stage 1: strength of the overlap penalty (0 = none)
-    penalty: str = "none"            # "none" | "plain" | "weighted" (batched trainer only, toy/batched.py)
+    penalty: str = "none"            # "none" | "plain" | "weighted" (Stage 1) | "leak_oracle" | "leak_sae" (Stage 2); batched trainer only
+    # Stage 2 (penalty "leak_sae"); the SAE settings must be equal inside one batched group
+    sae_type: str = "batchtopk"      # "relu_l1" | "batchtopk" | "jumprelu"
+    sae_n: int = 1000                # number of SAE latents
+    sae_k: float = 1.0               # batchtopk: wanted mean number of active latents per sample
+    sae_lr: float = 1e-3
+    sae_sparsity: float = 1e-3       # relu_l1: L1 coefficient; jumprelu: L0 coefficient
+    sae_gate: float = 0.3            # PLACEHOLDER: penalty is switched on once the SAE's moving-average FVU is below this
+    sae_ramp: int = 1000             # PLACEHOLDER: steps to ramp the penalty from 0 to full strength after the gate
 
     def run_id(self) -> str:
         base = f"a{self.alpha:g}_m{self.width}_g{self.gamma:+.2f}_s{self.seed}"
-        return base if self.penalty == "none" else f"{base}_p{self.penalty}{self.lam:g}"
+        if self.penalty == "none":
+            return base
+        out = f"{base}_p{self.penalty}{self.lam:g}"
+        if self.penalty == "leak_sae":
+            out += f"_{self.sae_type}n{self.sae_n}k{self.sae_k:g}"
+        return out
 
 
 def _defaults(model_cls, optimizer_cls, probs_fn, sampler):

@@ -3,7 +3,7 @@
 Project: Mechanistically Guided Training of Parameter-Efficient Language Models.
 Original proposal: [../PreResearch/README.md](../PreResearch/README.md). Working rules: [../../CLAUDE.md](../../CLAUDE.md).
 
-Last updated: 2026-11-13 (session 2).
+Last updated: 2026-11-15 (session 2).
 
 ## Current research direction
 
@@ -23,7 +23,11 @@ Recommendation: **pursue with significant modifications / narrowed scope** ([fea
 | 1 Literature review | First pass complete — verification pass pending |
 | 2 onward | Not started (blocked on decisions) |
 
-Stage 0: environment ready (`.venv`, torch 2.14.1+cu126), git initialised (no commits), Claude's half of the code written and tested ([../../toy/](../../toy/)); all code written (the user asked Claude to write the three core files too), 33 tests pass. No experiments have been run.
+**Toy-model stages (updated 2026-11-15; see [../notes/2.md](../notes/2.md) Addenda 6-20 and [phases/stage_0_toy_baseline.md](phases/stage_0_toy_baseline.md)):**
+- **Stage 0 (baseline) done:** gates G0.1-G0.3 passed; 10-seed weight-decay baseline L*(m) established at widths 10-150. A follow-up grid G-E (gamma -3/-4, width 225) is queued on Kaggle and not yet collected.
+- **Stage 1 (oracle overlap penalty) done: gate G1 PASS, 3 of 3 widths** (rule fixed before the final run; weighted penalty selected on seeds 0-2, judged on seeds 3-9: +10.8% / +27.5% / +45.9% lower error at widths 15 / 25 / 63, matching a model 1.5x wider at width 63). Oracle case only (true features and frequencies known); width 15 is borderline pair-wise (+8.4%). Details: notes/2.md Addendum 20.
+- **Stage 2 (SAE-measured penalty): partly approved 2026-11-15** (D-09, D-S2-1 bake-off, D-S2-2, D-S2-3, D-S2-10 order, 10%/3 s.e. pass rule; see [architectural_decisions.md](architectural_decisions.md)). **Step S2-0 (build) done:** leakage penalty, three SAE types, trainer integration, 177 tests pass. SAE-L steps cost about 3.5-4.4x a baseline step (measured), so the 6-7 GPU-hour estimate is probably 10-12. Next: write the S2-A bake-off script and ask before running it. Still open: D-S2-4..8 details. G-E results collected: width-63 baseline unchanged.
+- **Language-model proposals, not approved:** [proposals/README.md](proposals/README.md) (D-LM-1..16, which proposes dropping the literal 2 GB vs 3 GB test for a ratio-preserving ladder). Pipeline code `lm/` built and tested, placeholders only.
 
 ## Key documents
 
@@ -60,8 +64,8 @@ Q-HW-1 (GPUs), Q-HW-2 (budget), Q-SCOPE-1 (hours/deadline), Q-SCOPE-2 (solo/team
 
 ## Next recommended action
 
-1. **Stage 0 (S0-1…S0-7 approved):** user reads R1–R2 and implements `toy/model.py`, `toy/data.py`, `toy/optim.py` until all tests pass; then mutual review, fix gate thresholds, commit, run G-A and G-B (≈ 4.5–5 h), analyse. Details: phases/stage_0_toy_baseline.md §8.
-2. Still pending: D-09 approval, restated question wording (research_question.md §5), Q-HW-1/2, Q-SCOPE-1/2.
+1. **User decisions (2026-11-15):** approve, change or reject the Stage 2 proposals D-S2-1..10 and the language-model proposals D-LM-1..16 (in particular the ratio-preserving ladder instead of 2 GB vs 3 GB; a spending ceiling, Q-HW-2); collect the Kaggle G-E results and re-check the width-63 baseline; commit the new files.
+2. Still pending: D-09 approval, restated question wording (research_question.md §5), Q-HW-1/2, Q-SCOPE-1/2. (Items 1 and 3-5 below are older text; Stage 0 and Stage 1 above are done.)
 3. Revise research_gap_analysis.md and feasibility_assessment.md for the "more superposition" goal (banners mark the outdated parts).
 4. Close Phase 1: full-text reads of ★ sources (start with SUP_2026_004, the likeliest overlap) and the Q-LIT-2 prior-art searches.
 5. Phase 2: pre-register hypotheses; then Phase 3 architecture decisions in §9.1 format.

@@ -23,11 +23,13 @@ import time
 import torch
 
 from . import metrics
+from .leakage import leak_value_and_grad, oracle_readings
 from .schedule import lr_at
 from .train import TEST_SEED, RunConfig
 
 SHARED = ("n_features", "width", "steps", "batch_size", "peak_lr", "warmup_steps",
-          "final_lr_frac", "test_batches", "log_every")
+          "final_lr_frac", "test_batches", "log_every",
+          "sae_type", "sae_n", "sae_k", "sae_lr", "sae_sparsity", "sae_gate", "sae_ramp")
 
 
 def group_key(cfg: RunConfig) -> tuple:
@@ -170,10 +172,29 @@ def train_group(cfgs: list[RunConfig], device: str = "cuda", *, model_cls=None, 
 
     # overlap penalty (Stage 1): per-run strength and per-feature weights (all ones = plain, sqrt-frequency = weighted)
     kinds = {c.penalty for c in cfgs}
-    if not kinds <= {"none", "plain", "weighted"}:
-        raise ValueError(f"unknown penalty {kinds - {'none', 'plain', 'weighted'}}")
+    known = {"none", "plain", "weighted", "leak_oracle", "leak_sae"}
+    if not kinds <= known:
+        raise ValueError(f"unknown penalty {kinds - known}")
     lam = torch.tensor([c.lam if c.penalty != "none" else 0.0 for c in cfgs], dtype=torch.float32, device=device)
-    any_pen = bool((lam > 0).any())
+    # Stage 2 leakage penalty: per run, either the oracle dictionary (ORA-L) or a jointly trained SAE (SAE-L)
+    leak_oracle_mask = torch.tensor([c.penalty == "leak_oracle" for c in cfgs], device=device)
+    leak_sae_mask = torch.tensor([c.penalty == "leak_sae" for c in cfgs], device=device)
+    any_leak = bool((leak_oracle_mask | leak_sae_mask).any())
+    if any_leak and not fused:
+        raise ValueError("the leakage penalty is only in the fused path")
+    if any_leak and bool(((leak_oracle_mask | leak_sae_mask) & (lam <= 0)).any()):
+        raise ValueError("a leakage run needs lam > 0")
+    sae = None
+    gate_step = torch.full((R,), -1.0, device=device)
+    leak_last = torch.zeros(R, device=device)
+    twin_total = 0
+    if bool(leak_sae_mask.any()):
+        from .sae import SAEBank
+        sae = SAEBank(R, m, c0.sae_n, kind=c0.sae_type, k=c0.sae_k, l1=c0.sae_sparsity, l0=c0.sae_sparsity,
+                      lr=c0.sae_lr, device=device, seed=1000 + c0.seed)
+    lam_pair = torch.tensor([c.lam if c.penalty in ("plain", "weighted") else 0.0 for c in cfgs], dtype=torch.float32, device=device)
+    lam_leak = torch.tensor([c.lam if c.penalty in ("leak_oracle", "leak_sae") else 0.0 for c in cfgs], dtype=torch.float32, device=device)
+    any_pen = bool((lam_pair > 0).any())
     pen_w = None
     if any_pen:
         rows = []
@@ -202,14 +223,35 @@ def train_group(cfgs: list[RunConfig], device: str = "cuda", *, model_cls=None, 
                 loss_r, gW, gb = fused_loss_and_grads(x, W, b, want_loss=log_now, half=half)
                 if any_pen:
                     _, gpen = penalty_and_grad(W, pen_w, want_value=False)
-                    gW.add_(gpen * lam.view(R, 1, 1))
+                    gW.add_(gpen * lam_pair.view(R, 1, 1))
+                if any_leak:
+                    # Stage 2 order per step: model forward (h) -> SAE step on detached h -> penalty from the updated SAE -> model step
+                    h = torch.bmm(x, W)                                           # [R,B,m]
+                    D_or, on_or = oracle_readings(W, x)
+                    if sae is not None:
+                        with torch.enable_grad():                                  # the SAE trains itself; the model's update is not autograd
+                            fvu = sae.step(h)
+                        D_s, on_s, z_s = sae.readings(h)
+                        D = torch.where(leak_sae_mask.view(R, 1, 1), D_s, D_or)
+                        on = torch.where(leak_sae_mask.view(R, 1, 1), on_s, on_or)
+                        met = (sae.fvu_ema < c0.sae_gate) & (gate_step < 0) & leak_sae_mask
+                        gate_step = torch.where(met, torch.full_like(gate_step, step), gate_step)
+                        ramp = torch.where(gate_step >= 0, ((step - gate_step) / max(1, c0.sae_ramp)).clamp(0, 1), torch.zeros_like(gate_step))
+                        ramp = torch.where(leak_sae_mask, ramp, torch.ones_like(ramp))
+                    else:
+                        D, on, ramp = D_or, on_or, torch.ones(R, device=device)
+                    lv, g_h, tw = leak_value_and_grad(h, D, on, None, twin_thr=0.9, want_value=log_now)
+                    twin_total += tw
+                    gW.add_(torch.bmm(x.transpose(1, 2), g_h) * (lam_leak * ramp).view(R, 1, 1))
+                    if log_now:
+                        leak_last = lv
         else:                                   # reference path: autograd
             W.grad = None
             b.grad = None
             h = torch.bmm(x, W)
             y = torch.relu(torch.bmm(h, W.transpose(1, 2)) + b.unsqueeze(1))
             loss_r = ((y - x) ** 2).mean(dim=(1, 2))
-            total = loss_r.sum() + ((lam * penalty_value(W, pen_w)).sum() if any_pen else 0.0)
+            total = loss_r.sum() + ((lam_pair * penalty_value(W, pen_w)).sum() if any_pen else 0.0)
             total.backward()
             gW, gb = W.grad, b.grad
 
@@ -256,6 +298,13 @@ def train_group(cfgs: list[RunConfig], device: str = "cuda", *, model_cls=None, 
             "device": torch.cuda.get_device_name(0) if device.startswith("cuda") else device,
             "torch_version": torch.__version__,
         }
+        if c.penalty in ("leak_oracle", "leak_sae"):
+            res["leak_last"] = float(leak_last[r])
+            res["twin_entries_total_group"] = int(twin_total)
+        if c.penalty == "leak_sae" and sae is not None:
+            res["sae_fvu_ema"] = float(sae.fvu_ema[r])
+            res["sae_gate_step"] = int(gate_step[r])
+            res["mso_dec"] = metrics.mean_squared_overlap(sae.W_dec[r].detach())
         if status == "ok":
             model = model_cls(n, m).to(device)
             with torch.no_grad():

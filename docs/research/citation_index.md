@@ -4,7 +4,7 @@ Lookup table: claim → source → where it is discussed. Full records in [paper
 
 **Rule:** this index is a lookup system, not a substitute for the source. "Lvl" is the verification level of the source (L local, F PDF pages read page by page, P full-text via summarising fetch, A abstract only, S snippet only — definitions in paper_library.md). Rows updated in the 2026-11-14 Q-LIT-1 pass state the supporting section/figure/table inside the claim text. Claims at level A or S must not be used to justify an approved decision until upgraded.
 
-Last updated: 2026-11-13 (session 2).
+Last updated: 2026-11-15 (session 2; proposals merged at the end).
 
 ## Superposition and capacity
 
@@ -163,3 +163,36 @@ Keys in the 101+ block per category are new in this search. Lvl: P = HTML full t
 | Quantisation vs training | Low-bit quantisation hurts smaller, heavily trained models more (ACL 2025 listing seen in search) | QNT_2025_104 | arXiv:2411.17691 | A | prior_art_search.md |
 | Overtraining | Longer pretraining makes models more sensitive to parameter changes and harder to fine-tune (preprint) | QNT_2025_105 | arXiv:2503.19206 | A | prior_art_search.md |
 | Embedding weight decay in practice | OLMo 2 excluded token embeddings from weight decay (norms shrank, spikier training) | LMT_2025_101 | arXiv:2501.00656 | S | prior_art_search.md |
+
+## Added 2026-11-15 from the Stage 2 and language-model proposals (agent-written records; lead spot-checked, not re-verified source by source)
+
+Full records (authors, identifiers, URLs, methods, limits) are in [proposals/stage_2_sources.md](proposals/stage_2_sources.md) (14 new + 12 re-read records) and [proposals/lm_sources.md](proposals/lm_sources.md) (52 records). They are **not yet merged into paper_library.md**. Level "F(text)" in the LM file = downloaded and read in the named sections, not whole papers, figures not viewed (stricter than P, short of F). Author lists marked † in stage_2_sources.md were given from memory and still need checking on the arXiv pages.
+
+### Stage 2: SAE measurement, joint training, ground truth
+
+| Topic | Claim or finding | Key | Lvl | File |
+|---|---|---|---|---|
+| SAE basics | Sparse autoencoders find interpretable features in LMs | SAE_2023_201 | P | proposals/stage_2_sources.md |
+| SAE ground truth | Early MMCS ground-truth recovery measure for SAEs on toy data | SAE_2022_202 | P | proposals/stage_2_sources.md |
+| SAE variants | JumpReLU and BatchTopK SAE architectures (reconstruction fidelity vs sparsity) | SAE_2024_203, SAE_2024_204 | P | proposals/stage_2_sources.md |
+| SAE inference | Provable amortisation gap between the SAE encoder and optimal sparse inference | SAE_2024_205 | P | proposals/stage_2_sources.md |
+| SAE reliability | SAE latents are not canonical units; theory of SAE limits and a reweighted remedy | SAE_2025_206, SAE_2025_207 | P | proposals/stage_2_sources.md |
+| SAE ground truth | ToyBench (SAE evaluation with known features across frequency distributions); only the abstract was read | SAE_2026_208 | A | proposals/stage_2_sources.md |
+| Gaming a monitor | Models can bypass latent-space monitors when optimised against them (Goodhart risk for SAE-based penalties) | RAT_2024_210 | P | proposals/stage_2_sources.md |
+| Gaming a proxy | Reward-model overoptimisation scaling laws (abstract only) | RAT_2022_211 | A | proposals/stage_2_sources.md |
+| Coherence bounds | Coherence-based guarantees for sparse recovery (Ben-Haim, Eldar, Elad, IEEE TSP 2010; pages 1-5) | MATH_2010_213 | F | proposals/stage_2_sources.md |
+| Welch bound | Welch bound and mutual coherence (secondary pages); the project's measured Welch minima 0.0657 / 0.0390 / 0.0149 (m = 15 / 25 / 63) match the formula (n - m) / (m (n - 1)) | MATH_1974_214 | P | proposals/stage_2_sources.md |
+
+### Language-model training, compute, quantisation
+
+| Topic | Claim | Key | Lvl | File |
+|---|---|---|---|---|
+| Compute rule | Training is about 6 FLOPs per parameter per token; exact count within 0.99 to 1.10 of 6ND (73M to 6.8B) | LMT_2020_201, LMT_2022_202 (App. F, Table A4) | F(text) partial | proposals/lm_sources.md |
+| Tokens per parameter | Compute-optimal about 20 tokens per parameter (400M: 8.0B; 1B: 20.2B) | LMT_2022_202 (Table 3) | F(text) partial | proposals/lm_sources.md |
+| Utilisation | Published runs reach 22 to 34 percent (Pythia), 51 (TinyLlama), 55 (llm.c) of A100 peak, computed from reported GPU-hours | LMT_2023_204, LMT_2024_207, LMT_2024_224 | F(text) / P | proposals/lm_sources.md |
+| Over-training | SmolLM2-135M trained on 2T tokens (about 14,800 per parameter) | LMT_2025_206 | F(text) partial | proposals/lm_sources.md |
+| Embedding share | A 125M-class model has more than 20 percent of its parameters in embeddings; sharing saves 16M parameters for -0.2 accuracy points (45.0 with 2 extra layers) | LMT_2024_001 (Table 1) | F(text) partial | proposals/lm_sources.md |
+| Weight decay | No weight decay on embeddings reduced spikes in OLMo 2 (supersedes the S-level entry LMT_2025_101 above) | LMT_2025_101 (Sec. 3.4.2) | F(text) partial | proposals/lm_sources.md |
+| Small-model quantisation | OPT-125M WikiText2 perplexity 27.65 (16-bit), 31.12 GPTQ 4-bit, 37.28 RTN 4-bit | QNT_2022_201 (Table 3) | F(text) partial | proposals/lm_sources.md |
+| Software state | AutoGPTQ and AutoAWQ archived on GitHub (checked 2026-11-15); bitsandbytes and llama.cpp active | INF_2026_201 | F(text) | proposals/lm_sources.md |
+| Free compute | Kaggle docs: 12 h sessions, T4 x2, no weekly quota figure on the page (the "about 30 h/week" figure is from secondary sources, unverified) | INF_2026_203 | F(text) via renderer | proposals/lm_sources.md |

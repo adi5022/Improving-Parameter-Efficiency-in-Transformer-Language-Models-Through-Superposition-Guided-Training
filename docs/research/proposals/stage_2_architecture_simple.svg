@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 570" width="1000" height="570" font-family="Segoe UI, Arial, Helvetica, sans-serif">
+  <defs>
+    <marker id="m-blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#2563eb"/></marker>
+    <marker id="m-orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#ea580c"/></marker>
+    <marker id="m-grey" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#6b7280"/></marker>
+    <marker id="m-red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#dc2626"/></marker>
+  </defs>
+  <style>
+    text { fill: #111827; }
+    .b { font-weight: 700; }
+    .c { text-anchor: middle; }
+    .box { rx: 10; ry: 10; stroke-width: 2; fill: #ffffff; }
+  </style>
+  <rect width="1000" height="570" fill="#ffffff"/>
+
+  <text x="30" y="34" font-size="22" font-weight="700">Stage 2, simplified: how the penalty trains the model</text>
+  <text x="30" y="56" font-size="13" style="fill:#374151">Proposed design, not approved. The SAE only measures; the penalty is what changes training.</text>
+
+  <!-- Model -->
+  <rect class="box" x="40" y="80" width="230" height="340" stroke="#2563eb"/>
+  <text x="155" y="130" font-size="20" class="b c">Model</text>
+  <text x="155" y="165" font-size="14" class="c">learns from random start</text>
+  <text x="155" y="215" font-size="14" class="c b">hidden activations h</text>
+  <text x="155" y="238" font-size="13" class="c">(the packed features)</text>
+  <text x="155" y="285" font-size="14" class="c b">weights W</text>
+  <text x="155" y="308" font-size="13" class="c">the only thing that gets</text>
+  <text x="155" y="326" font-size="13" class="c">updated</text>
+
+  <!-- Task loss -->
+  <rect class="box" x="420" y="80" width="200" height="80" stroke="#2563eb"/>
+  <text x="520" y="115" font-size="16" class="b c">Task loss</text>
+  <text x="520" y="138" font-size="13" class="c">how wrong the output is</text>
+  <line x1="272" y1="105" x2="418" y2="105" stroke="#2563eb" stroke-width="2.5" marker-end="url(#m-blue)"/>
+  <text x="345" y="97" font-size="13" class="c" style="fill:#1d4ed8">output</text>
+  <line x1="418" y1="138" x2="272" y2="138" stroke="#dc2626" stroke-width="2.5" marker-end="url(#m-red)"/>
+  <text x="345" y="156" font-size="13" class="c" style="fill:#b91c1c">task gradient</text>
+
+  <!-- SAE -->
+  <rect class="box" x="420" y="230" width="200" height="100" stroke="#16a34a"/>
+  <text x="520" y="262" font-size="16" class="b c">SAE</text>
+  <text x="520" y="284" font-size="13" class="c">measuring tool: finds the</text>
+  <text x="520" y="302" font-size="13" class="c">features inside h, trains</text>
+  <text x="520" y="320" font-size="13" class="c">itself on a copy</text>
+  <line x1="272" y1="280" x2="418" y2="280" stroke="#6b7280" stroke-width="2.5" stroke-dasharray="6 4" marker-end="url(#m-grey)"/>
+  <text x="345" y="262" font-size="13" class="c" style="fill:#4b5563">copy of h</text>
+  <text x="345" y="300" font-size="13" class="c" style="fill:#4b5563">(no gradient)</text>
+
+  <!-- Penalty -->
+  <rect class="box" x="780" y="230" width="190" height="100" stroke="#ea580c"/>
+  <text x="875" y="262" font-size="16" class="b c">Overlap penalty</text>
+  <text x="875" y="284" font-size="13" class="c">checks which feature</text>
+  <text x="875" y="302" font-size="13" class="c">arrows in h overlap</text>
+  <line x1="620" y1="280" x2="778" y2="280" stroke="#6b7280" stroke-width="2.5" stroke-dasharray="6 4" marker-end="url(#m-grey)"/>
+  <text x="699" y="262" font-size="13" class="c" style="fill:#4b5563">feature directions</text>
+  <text x="699" y="300" font-size="13" class="c" style="fill:#4b5563">(constants)</text>
+
+  <!-- live h to penalty -->
+  <path d="M272,395 H920 V332" fill="none" stroke="#ea580c" stroke-width="2.5" marker-end="url(#m-orange)"/>
+  <text x="560" y="414" font-size="13" class="c" style="fill:#c2410c">h itself (live: this is the path the gradient can follow)</text>
+
+  <!-- penalty gradient back to model -->
+  <path d="M840,332 V355 H272" fill="none" stroke="#dc2626" stroke-width="2.5" marker-end="url(#m-red)"/>
+  <text x="520" y="373" font-size="13" class="c" style="fill:#b91c1c">penalty gradient: pushes overlapping arrows apart</text>
+
+  <!-- steps -->
+  <line x1="30" y1="448" x2="970" y2="448" stroke="#d1d5db" stroke-width="1.5"/>
+  <g font-size="14">
+    <text x="30" y="476"><tspan class="b">1</tspan>  The model turns the input into h, makes an output, and gets a task loss.</text>
+    <text x="30" y="499"><tspan class="b">2</tspan>  The SAE reads a copy of h and learns which features it contains. It never receives the penalty's gradient.</text>
+    <text x="30" y="522"><tspan class="b">3</tspan>  The penalty uses the SAE's feature directions to measure overlap between feature arrows in h.</text>
+    <text x="30" y="545"><tspan class="b">4</tspan>  The model updates from the task gradient plus the penalty gradient. Then the next step starts.</text>
+  </g>
+</svg>

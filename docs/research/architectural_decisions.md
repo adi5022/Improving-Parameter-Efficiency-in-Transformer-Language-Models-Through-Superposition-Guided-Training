@@ -150,7 +150,24 @@ Not covered by this approval: the Stage 0 gate thresholds (still a draft), D-01â
 
 The user agreed to add a tree-structured toy variant (candidate 1b) to Stage 1 alongside the overlap-penalty candidate (1a). This approves the candidate's **inclusion in the plan only**. The penalty form, tree design and gate margins are not approved and need a decision in the section 9.1 format before implementation.
 
+## Stage 2 approvals (2026-11-15, user, via question dialog)
+
+Approved as proposed in [proposals/stage_2_design_proposal.md](proposals/stage_2_design_proposal.md):
+
+| ID | Approved choice |
+|---|---|
+| D-09 | Joint SAE training, option (b): SAE takes its own step every model step on detached activations; the penalty never trains the SAE (stop-gradient); an independent ruler (true overlap in the toy, fresh SAEs on saved checkpoints) |
+| D-S2-2 | The SAE reads the hidden activations h = xW only |
+| D-S2-3 | Penalty = activation "leakage" (section 5.2 of the proposal) with all SAE quantities detached; matched-row penalty only as an optional diagnostic; co-activation form not tried |
+| D-S2-1 | Run the pre-registered SAE bake-off (ReLU+L1, BatchTopK, JumpReLU) on frozen Stage 0/1 models, selection on seeds 0-2; the winner is chosen by the rule in D-S2-1 item 7 |
+| D-S2-10 | Order: S2-0 build and unit tests, S2-A, S2-B, S2-C pilot, user checkpoint, S2-D final. Pilots on the local GPU, final on Kaggle. User approved "start building now"; the heavy runs (S2-A onward) are still announced to the user before they start. |
+| Pass rule | Same bar as Stage 1: error more than 10% below the tuned baseline and more than 3 combined standard errors at 2 of 3 widths (15, 25, 63); Stage 2 also requires keeping about half of the oracle's gain (D-S2-8). This explicitly confirms the Stage 1 margin. |
+
+Not yet approved (need discussion before the runs that depend on them): D-S2-4 (SAE schedule), D-S2-5 (frequency weights), D-S2-6 (carried arm: Stage 1 final shows the weighted arm winning at every width, so the proposal's "plain primary" recommendation is out of date), D-S2-7 (controls), D-S2-8 thresholds V1-V4 (to be confirmed after S2-A, then frozen), D-LM-1..16.
+
 ## Change log
+
+- 2026-11-15: Stage 2 approvals above recorded.
 
 - 2026-11-11: register created; nothing approved.
 - 2026-11-11 (later, same session): user clarified the proposal; U-01â€¦U-08 recorded; D-09 added.
