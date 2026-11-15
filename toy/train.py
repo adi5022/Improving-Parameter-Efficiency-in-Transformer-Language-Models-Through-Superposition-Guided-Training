@@ -53,7 +53,7 @@ class RunConfig:
             return base
         out = f"{base}_p{self.penalty}{self.lam:g}"
         if self.penalty == "leak_sae":
-            out += f"_{self.sae_type}n{self.sae_n}k{self.sae_k:g}"
+            out += f"_{self.sae_type}n{self.sae_n}k{self.sae_k:g}s{self.sae_sparsity:g}"   # sparsity in the id: two SAE settings must not share a file
         return out
 
 

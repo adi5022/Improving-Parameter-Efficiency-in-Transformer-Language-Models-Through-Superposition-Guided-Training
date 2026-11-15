@@ -36,6 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "configs" / "stage0.json"
 WIDTH_COST_OFFSET = 170   # a step costs about 10 ms plus 0.06 ms per unit of width, so cost is not proportional to width
 SCALARS = ["test_loss", "final_train_loss", "phi_half", "phi_one", "mso_all", "mso_represented", "train_seconds"]
+EXTRA_SCALARS = ["leak_last", "sae_fvu_ema", "sae_gate_step", "mso_dec", "twin_entries_total_group"]
 
 
 def git_state() -> dict:
@@ -54,20 +55,28 @@ def grid_configs(grid_name: str, config_path: Path = CONFIG) -> list[RunConfig]:
     rects = grid["parts"] if "parts" in grid else [grid]
     out, seen = [], set()
     for rect in rects:
-        for a, m, g, s, pen, lam in itertools.product(rect["alpha"], rect["width"], rect["gamma"], rect["seed"],
-                                                      rect.get("penalty", ["none"]), rect.get("lam", [0.0])):
-            c = RunConfig(alpha=a, width=m, gamma=g, seed=s, penalty=pen, lam=lam, **defaults)
-            if c.run_id() not in seen:
-                seen.add(c.run_id())
-                out.append(c)
+        # "extra": other RunConfig fields fixed for this rectangle (Stage 2: the SAE type and its settings)
+        # "gamma_by_width": {"15": -0.55, ...} instead of "gamma", when each width has its own weight decay
+        # "lam_by_width":   {"15": [..], ...}  instead of "lam",   when each width has its own penalty range
+        extra = rect.get("extra", {})
+        gbw, lbw = rect.get("gamma_by_width"), rect.get("lam_by_width")
+        for a, m, s, pen in itertools.product(rect["alpha"], rect["width"], rect["seed"], rect.get("penalty", ["none"])):
+            gammas = [gbw[str(m)]] if gbw is not None else rect["gamma"]
+            lams = lbw[str(m)] if lbw is not None else rect.get("lam", [0.0])
+            for g, lam in itertools.product(gammas, lams):
+                c = RunConfig(alpha=a, width=m, gamma=g, seed=s, penalty=pen, lam=lam, **{**defaults, **extra})
+                if c.run_id() not in seen:
+                    seen.add(c.run_id())
+                    out.append(c)
     return out
 
 
 def _save(result: dict, out_dir: Path, git: dict) -> None:
     result["git"] = git
     torch.save(result, out_dir / f"{result['run_id']}.pt")
+    extras = {k: result[k] for k in EXTRA_SCALARS if k in result}          # Stage 2 runs only
     line = {"run_id": result["run_id"], "status": result["status"], **result["config"],
-            **{k: result[k] for k in SCALARS}, "git_commit": git["commit"], "precision": result.get("precision", "fp32")}
+            **{k: result[k] for k in SCALARS}, **extras, "git_commit": git["commit"], "precision": result.get("precision", "fp32")}
     with (out_dir / "summary.jsonl").open("a") as f:
         f.write(json.dumps(line) + "\n")
 
@@ -91,7 +100,8 @@ def split_configs(configs: list[RunConfig], weights: list[float], part: int, max
     if not 0 <= part < len(weights) or any(w <= 0 for w in weights):
         raise ValueError("part must index into weights, and weights must be positive")
     groups = make_groups(configs, max_group)
-    cost = lambda g: len(g) * (WIDTH_COST_OFFSET + g[0].width) * g[0].steps   # time per step is roughly 10 ms + 0.06 ms per width unit (measured on a T4)
+    # time per step is roughly 10 ms + 0.06 ms per width unit (measured on a T4); a group with an SAE costs about 4x (measured locally)
+    cost = lambda g: len(g) * (WIDTH_COST_OFFSET + g[0].width) * g[0].steps * (4 if g[0].penalty == "leak_sae" else 1)
     load = [0.0] * len(weights)
     mine: list[list[RunConfig]] = []
     for g in sorted(groups, key=lambda g: (-cost(g), g[0].run_id())):
