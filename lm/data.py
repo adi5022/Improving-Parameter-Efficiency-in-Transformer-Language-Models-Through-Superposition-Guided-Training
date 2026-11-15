@@ -41,12 +41,17 @@ class ByteTokenizer:
 
 # ---------------------------------------------------------------- writing shards
 
-def write_shards(texts: Iterable[str], encode: Callable[[str], list[int]], out_dir, *, vocab_size: int,
+def write_shards(texts: Iterable[str | None], encode: Callable[[str], list[int]], out_dir, *, vocab_size: int,
                  tokens_per_shard: int, val_shards: int = 1, tokenizer_name: str = "unknown",
-                 eos_id: int | None = None) -> dict:
+                 eos_id: int | None = None, encode_batch: Callable[[list[str]], list[list[int]]] | None = None,
+                 batch_docs: int = 5000) -> dict:
     """Tokenise `texts` and write shards. A shard is closed after the document that takes it to
     at least `tokens_per_shard` tokens, so a document never straddles two shards. If `eos_id`
-    is given it is appended to every document. Returns the meta dict (also saved as meta.json)."""
+    is given it is appended to every document. Returns the meta dict (also saved as meta.json).
+
+    A `None` in `texts` closes the current shard (so the texts after it start a new shard; used to keep
+    the held-out text in shards of its own). `encode_batch`, if given, tokenises `batch_docs` documents
+    per call (much faster for a library tokenizer); it must give the same ids as `encode`."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     dtype = "uint16" if vocab_size <= 2**16 else "uint32"
@@ -61,13 +66,31 @@ def write_shards(texts: Iterable[str], encode: Callable[[str], list[int]], out_d
         shards.append({"file": name, "n_tokens": len(buf), "n_bytes": n_bytes})
         buf, n_bytes = [], 0
 
-    for text in texts:
-        ids = encode(text) + ([eos_id] if eos_id is not None else [])
-        if ids and max(ids) >= vocab_size:
-            raise ValueError(f"token id {max(ids)} >= vocab_size {vocab_size}")
-        buf.extend(ids)
-        n_bytes += len(text.encode("utf-8"))
-        if len(buf) >= tokens_per_shard:
+    def chunks():
+        chunk = []
+        for text in texts:
+            if text is None:
+                yield chunk, True
+                chunk = []
+            else:
+                chunk.append(text)
+                if len(chunk) >= batch_docs:
+                    yield chunk, False
+                    chunk = []
+        if chunk:
+            yield chunk, False
+
+    for chunk, boundary in chunks():
+        ids_list = encode_batch(chunk) if encode_batch is not None else [encode(t) for t in chunk]
+        for text, ids in zip(chunk, ids_list):
+            ids = list(ids) + ([eos_id] if eos_id is not None else [])
+            if ids and max(ids) >= vocab_size:
+                raise ValueError(f"token id {max(ids)} >= vocab_size {vocab_size}")
+            buf.extend(ids)
+            n_bytes += len(text.encode("utf-8"))
+            if len(buf) >= tokens_per_shard:
+                flush()
+        if boundary:
             flush()
     flush()
     if len(shards) <= val_shards:

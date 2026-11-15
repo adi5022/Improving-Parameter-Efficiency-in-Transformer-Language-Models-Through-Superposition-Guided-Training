@@ -165,8 +165,50 @@ Approved as proposed in [proposals/stage_2_design_proposal.md](proposals/stage_2
 
 Not yet approved (need discussion before the runs that depend on them): D-S2-4 (SAE schedule), D-S2-5 (frequency weights), D-S2-6 (carried arm: Stage 1 final shows the weighted arm winning at every width, so the proposal's "plain primary" recommendation is out of date), D-S2-7 (controls), D-S2-8 thresholds V1-V4 (to be confirmed after S2-A, then frozen), D-LM-1..16.
 
+## Approvals of 2026-11-15 (later): D-S2-4 and the language-model direction (user, in chat: "Yes, approve both")
+
+| ID | Approved choice |
+|---|---|
+| D-S2-4 | Joint training loop per step: (1) batch, (2) one model forward pass keeping the graph and the activations h at the chosen site, (3) task loss, (4) SAE step on a detached copy of h with its own optimiser (reconstruction + sparsity), (5) penalty computed with the just-updated SAE (SAE read-out without gradient; leakage penalty on the live h), (6) total loss = task + lambda x penalty, one backward pass, model optimiser step. The SAE trains from step 0; lambda stays 0 until the SAE reconstructs well, then is ramped in (the gate value is still a placeholder, to be calibrated after S2-A). SAE refresh gaps of 10 and 100 steps and a frozen SAE are measured as staleness controls (S2-C). |
+| D-LM-1 (modified) | **Budget: no spending.** The literal 2 GB vs 3 GB test is dropped. The language-model study runs at 10.6M (R1) and 24M (R2) parameters with B = 1.5 x A on free or local compute (local GTX 1660 Ti, Kaggle/Colab T4). A 70M model is allowed only as one or two final confirmation runs after the small ones show an effect (about 55 h each locally, about 16 h on a T4; estimates). The 47M and 126M rungs and all rented compute are out. Claims will be stated "at 10-70M parameters". First step, no penalty involved: standard models at 10.6, 16, 24, 36M with 3 seeds to see whether a 1.5x size gap is visible above seed noise. |
+
+Still unapproved: D-LM-2..16 (block design, tokenizer, corpus, optimiser, etc.), D-S2-5..8, the V1-V4 thresholds.
+
+## D-LM-4 approved (user, in chat, 2026-11-15)
+
+Custom byte-level BPE tokenizer with 16,384 entries, trained by us on a few GB of the main training corpus (using a standard library; the algorithm is not written by us), one tokenizer for all model sizes; loss reported as bits per byte so the tokenizer cannot bias comparisons. A ready-made GPT-2 tokenizer (50,257 entries) is a fallback only. 8,192 entries remains the alternative if the data-size fit is preferred. Reason given to the user: at 10-25M parameters a 50k vocabulary makes the embedding table 67% of the model and about two thirds of the per-token compute (my calculation).
+
+## D-LM-2 and D-LM-5 approved (user, in chat, 2026-11-15)
+
+| ID | Approved choice |
+|---|---|
+| D-LM-2 | Llama-style block as proposed: pre-norm RMSNorm, SwiGLU MLP (hidden size about 8/3 of d, multiple of 64), RoPE (theta 10,000), no bias terms, plain multi-head attention with head size 64. User asked for "the llama style transformer block" after the GPT-2 comparison. B is "standard", not "best possible"; the write-up will say so. |
+| D-LM-5 | Option (ii): TinyStories for development, FineWeb-Edu (10B-token sample, only a slice is needed) for the main study. A fixed held-out slice of at least 5M tokens is cut before tokenisation and never trained on; optional second held-out set WikiText-103 test. No SlimPajama. |
+
+Still open in the language-model list: D-LM-3 (tied embeddings), the model shapes (d, layers; proposal d = 256 with 8 layers for the 10.6M model), D-LM-6..16.
+
+## Language-model baseline settings approved (user, in chat, 2026-11-15)
+
+The user approved the ten-row table (their numbered replies 1-10 follow the table's row order; the replies were short, e.g. "ok", "good", "Yes"). One reply ("It takes 12 hours?????") was a misreading: 12 hours is Kaggle's maximum session length, not the training time; explained in chat.
+
+| ID | Approved choice |
+|---|---|
+| D-LM-3 | Tied input/output embeddings. |
+| D-LM-6 | Context 1,024 tokens; documents concatenated with an end-of-text token; no cross-document masking at first. |
+| D-LM-7 | About 20 tokens per parameter as the primary regime (the proposal's option (b) adds a 100-per-parameter regime on the two smallest rungs, to be decided when the baseline ladder is done); equal tokens for every model within a size. |
+| D-LM-8 | AdamW, betas (0.9, 0.95), eps 1e-8, gradient clip 1.0, linear warmup max(100 steps, 2%), cosine to 10% of peak, weight decay on weight matrices only. **Modified tuning rule (proposed by me, accepted with the table):** first tune only the peak learning rate (3 values between 6e-4 and 3e-3, 1 seed) at 10.6M, then reuse the best value for the larger sizes unless one diverges; widen the search later only if needed. |
+| D-LM-9 | Batch size in tokens scaled with model size (about 65,536 tokens per step up to 50M parameters), reached with gradient accumulation. |
+| D-LM-10 | fp16 on T4 / GTX 1660 Ti; one hardware class per comparison; every run records GPU, driver and library versions. |
+| D-LM-11 | Every run directory stores config, git commit, seed, data order seed, hardware record, loss log, two rolling resumable states, milestone weights, final state, evaluation JSON; never overwritten. Needed because Kaggle sessions last at most 12 hours. |
+| D-LM-12 | Primary metric: bits per byte on the held-out slice (at least 5M tokens). Secondary benchmarks only for the larger runs. |
+| D-LM-13 | Train on Kaggle's free hours (and the local GPU); no rented compute. |
+| D-LM-16 | Our own `lm/` code, with a later exporter to the Hugging Face Llama format. |
+
+Still open: the model shapes (d, layers, heads, d_ff) for each size (proposal for 10.6M: d = 256, 8 layers, 4 heads, d_ff 704; for 24M: d = 384, 10 layers, 6 heads, d_ff 1024; 16M and 36M to be proposed), D-LM-14 (A-versus-B protocol), D-LM-15 (quantisation), D-S2-5..8, the V1-V4 thresholds.
+
 ## Change log
 
+- 2026-11-15: language-model baseline settings D-LM-3, 6-13, 16 approved (section above).
 - 2026-11-15: Stage 2 approvals above recorded.
 
 - 2026-11-11: register created; nothing approved.
@@ -234,3 +276,6 @@ Pilot: 3 widths (15, 25, 63) x 4 lambda values x 2 sub-arms x 3 seeds = 72 runs,
 - **lambda pilot grid moved up one decade to {1e-4, 1e-3, 1e-2, 1e-1}.** Scale check at m = 25 on a trained baseline solution (gamma -1): lambda x |grad P| / |grad task loss| = 0.001 / 0.009 / 0.09 / 0.9 at lambda 1e-5 / 1e-4 / 1e-3 / 1e-2, so 1e-5 would be negligible and the interesting range probably extends above 1e-2.
 - **Implementation details (not architectural):** dead rows: directions are taken with the row norm floored at 1e-2 so near-zero rows cannot blow up the gradient; the penalty gradient is added to the task gradient before Adam; the penalty is computed in float32.
 - **Still open:** the pass margin (10% and 3 standard errors) must be confirmed before the final runs, not before the pilot. Gate thresholds in `configs/stage0.json` are still a draft.
+- 2026-11-15 (later): D-S2-4 approved; D-LM-1 approved in modified form (10.6M and 24M ladder, no spending, 70M only as confirmation).
+- 2026-11-15 (later): D-LM-4 approved (custom 16,384-entry byte-level BPE).
+- 2026-11-15 (later): D-LM-2 (Llama-style block) and D-LM-5 (TinyStories for development, FineWeb-Edu for the main study) approved.
